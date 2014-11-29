@@ -14,6 +14,9 @@
 #include "tests/transform-system-test.h"
 #include "tests/bitmap-test.hpp"
 #include "tests/rewindable-map-test.hpp"
+#include "tests/crypto-test.h"
+#include "tests/VMAC-stream-hasher-test.h"
+#include "tests/ESIGN-signature-test.h"
 
 size_t gAllocatedSize = 0;
 

@@ -2,6 +2,7 @@
 #include "trillek-scheduler.hpp"
 #include "os.hpp"
 #include "systems/fake-system.hpp"
+#include "controllers/network/network-controller.hpp"
 #include "systems/physics.hpp"
 #include "systems/meta-engine-system.hpp"
 #include "systems/sound-system.hpp"
@@ -15,6 +16,7 @@ namespace trillek {
 void TrillekGame::Initialize() {
     scheduler.reset(new TrillekScheduler);
     fake_system.reset(new FakeSystem);
+    network_system.reset(new network::NetworkController);
     phys_sys.reset(new physics::PhysicsSystem);
     glfw_os.reset(new OS);
     shared_component.reset(new component::Shared);
@@ -25,6 +27,7 @@ void TrillekGame::Initialize() {
 }
 std::unique_ptr<TrillekScheduler> TrillekGame::scheduler;
 std::unique_ptr<FakeSystem> TrillekGame::fake_system;
+std::unique_ptr<network::NetworkController> TrillekGame::network_system;
 std::unique_ptr<physics::PhysicsSystem> TrillekGame::phys_sys;
 std::unique_ptr<OS> TrillekGame::glfw_os;
 std::unique_ptr<component::Shared> TrillekGame::shared_component;
