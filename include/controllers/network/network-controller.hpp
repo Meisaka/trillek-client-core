@@ -67,7 +67,22 @@ public:
      *
      */
     bool Connect(const std::string& host, unsigned short port,
-                 const std::string& login, const std::string& password);
+                 const std::string& login, const std::string& password) const;
+
+    /** \brief Return the entity ID given by the server
+     *
+     * To be used only on the client side
+     *
+     * \return const std::vector<unsigned char>* the entity id
+     *
+     */
+    id_t EntityID() const { return entity_id; };
+
+    /** \brief Return the verifier functor used to check the tag of each packet received
+     *
+     * \return the verifier functor
+     */
+    std::function<bool(const unsigned char*,const unsigned char*,size_t)>& Verifier() { return verifier; };
 
     /** \brief Initialize the TCP handler
      *
@@ -86,6 +101,17 @@ public:
         });
     }
 
+    /** \brief Return the instance of the packet handler
+     *
+     * \return const network_packet_handler::PacketHandler& the instance
+     *
+     */
+    const packet_handler::PacketHandler& GetPacketHandler() const {
+        return packet_handler;
+    };
+
+private:
+
     /** \brief Set the public key that will be used to authenticate packets
      * received from the server.
      *
@@ -95,15 +121,6 @@ public:
      */
     void SetServerPublicKey(std::vector<unsigned char>&& key) {
         serverPublicKey = std::move(key);
-    };
-
-    /** \brief Return the instance of the packet handler
-     *
-     * \return const network_packet_handler::PacketHandler& the instance
-     *
-     */
-    const packet_handler::PacketHandler& GetPacketHandler() const {
-        return packet_handler;
     };
 
     /** \brief The listener waits for connections and pass new connections
@@ -138,25 +155,19 @@ public:
         this->verifier = std::move(verifier);
     };
 
-    /** \brief Return the verifier functor used to check the tag of each packet received
-     *
-     * \return the verifier functor
-     */
-    std::function<bool(const unsigned char*,const unsigned char*,size_t)>& Verifier() { return verifier; };
-
     /** \brief Set the authentication state
      *
      * \param state the state
      *
      */
-    void SetAuthState(uint32_t state) const { auth_state.store(state); };
+    bool SetAuthState(uint32_t state) const { return connection_data->SetAuthState(state); };
 
     /** \brief Get the authentication state
      *
      * \return uint32_t the state
      *
      */
-    uint32_t AuthState() const { return auth_state.load(); };
+    uint32_t AuthState() const { return connection_data ? connection_data->AuthState() : AUTH_NONE; };
 
     const AtomicQueue<std::shared_ptr<Frame_req>>* const GetAuthenticatedRawFrameReqQueue() const { return &auth_rawframe_req; };
     const AtomicQueue<std::shared_ptr<Message>>* const GetAuthenticatedCheckedFrameQueue() const { return &auth_checked_frame_req; };
@@ -172,15 +183,12 @@ public:
      */
     int HandleEvents() const;
 
-    /** \brief Close a connection through a Message
+    /** \brief Close the connection
      *
-     * Specialized in Networktemplates.cpp
-     *
-     * \param frame const Message*
      * \return void
      *
      */
-    void CloseConnection(const Message* frame) const;
+    void CloseConnection() const;
 
     /** \brief Dispatch the unauthenticated frames to the packet handlers
      *
@@ -200,29 +208,6 @@ public:
      */
     int AuthenticatedDispatch() const;
 
-    /** \brief Close a connection and remove the network node component (server side)
-    *
-    * \param fd const int the file descriptor
-    * \param cx_data const ConnectionData* the data containing the id of the entity
-    * \return void
-    *
-    */
-    void CloseConnection(const socket_t fd, const ConnectionData* cx_data) const;
-
-    /** \brief Close an uncomplete connection, i.e known by the network but not the game
-    *
-    * \param fd const int the file descriptor
-    *
-    */
-    void RemoveConnection(socket_t fd) const;
-
-    /** \brief Close the connection
-     *
-     * This function is valid only on client side
-     *
-     */
-    void RemoveClientConnection() const;
-
     /** \brief Return the public key used to check packets received from the server
      *
      * To be used only on client side
@@ -241,18 +226,9 @@ public:
      */
     void SetEntityID(id_t eid) { entity_id = eid; };
 
-    /** \brief Return the entity ID given by the server
-     *
-     * To be used only on the client side
-     *
-     * \return const std::vector<unsigned char>* the entity id
-     *
-     */
-    id_t EntityID() const { return entity_id; };
+    socket_t GetHandle() const { return connection_data->GetTCPConnection().get_handle(); }
 
-    // the listening socket, static because all threads must read it
-    static TCPConnection server_socket;
-    socket_t server_handle;
+    ConnectionData* GetConnectionData() const { return connection_data.get(); };
 
     // instance of the kqueue
     const IOPoller poller;
@@ -277,12 +253,13 @@ public:
     std::function<bool(const unsigned char*,const unsigned char*,size_t)> verifier;
     std::function<void(unsigned char*,const unsigned char*,size_t)> hasher;
 
-    TCPConnection cnx;
-    mutable std::atomic_uint_least32_t auth_state;
+    mutable std::unique_ptr<ConnectionData> connection_data;
+    mutable std::mutex m_connection_data;
+
     // used to observe the connection process result from another thread
     mutable std::condition_variable is_connected;
     // mutex associated with the unique_lock
-    std::mutex connecting;
+    mutable std::mutex connecting;
     // the entity ID provided by the server
     id_t entity_id;
 
@@ -325,7 +302,7 @@ public:
 
             if (len > MAX_MESSAGE_SIZE) {
 //					LOG_DEBUG << "(" << sched_getcpu() << ") Packet length exceeding MAX_MESSAGE_SIZE bytes. closing";
-                CloseConnection(frame);
+                CloseConnection();
                 continue;
             }
             current_size += len;
@@ -353,7 +330,7 @@ public:
                 if (req->HasExpired()) {
                     // Frame reassembly is stopped after 3 seconds if message is uncomplete
 //						LOG_DEBUG << "(" << sched_getcpu() << ") Dropping all frames and closing (timeout)";
-                    CloseConnection(frame);
+                    CloseConnection();
                     continue;
                 }
                 // we put again the request in the queue

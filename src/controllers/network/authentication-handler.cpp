@@ -22,7 +22,7 @@ void Authentication::CreateSecureKey(const trillek_list<std::shared_ptr<Message>
         auto msg = reinterpret_cast<unsigned char*>(req->FrameHeader());
         NetworkController &client = TrillekGame::GetNetworkSystem();
         auto v = client.Verifier();
-        if ((v)(req->Tail<const unsigned char*>(), msg, req->PacketSize()) && req->CxData()->SetAuthState(AUTH_SHARE_KEY)) {
+        if ((v)(req->Tail<const unsigned char*>(), msg, req->PacketSize()) && client.SetAuthState(AUTH_SHARE_KEY)) {
             auto pkt = req->Content<KeyReplyPacket>();
             auto key = make_unique<std::vector<unsigned char>>(PUBLIC_KEY_SIZE);
             std::memcpy(key->data(), &pkt->challenge, PUBLIC_KEY_SIZE);
@@ -32,15 +32,13 @@ void Authentication::CreateSecureKey(const trillek_list<std::shared_ptr<Message>
             esign->SetPublicKey(std::move(key));
             esign->Initialize();
             client.SetVerifier(esign->Verifier());
-            client.SetAuthState(AUTH_SHARE_KEY);
 			LOGMSG(DEBUG) << "Authentication OK";
             client.is_connected.notify_all();
         }
         else {
 			LOGMSG(ERROR) << "Authentification failed: Could not authenticate the server";
-            req->CxData()->SetAuthState(AUTH_NONE);
             client.SetAuthState(AUTH_NONE);
-            client.CloseConnection(req.get());
+            client.CloseConnection();
             client.is_connected.notify_all();
         }
     }
@@ -81,7 +79,7 @@ void PacketHandler::Process<NET_MSG,AUTH_SEND_SALT>() const {
     }
     NetworkController &client = TrillekGame::GetNetworkSystem();
     for(auto& req : req_list) {
-        if (req->CxData()->SetAuthState(AUTH_KEY_EXCHANGE)) {
+        if (client.SetAuthState(AUTH_KEY_EXCHANGE)) {
             // We must send keys
             auto frame = req->Content<SendSaltPacket>()->GetKeyExchangePacket();
             auto packet = frame.Content<KeyExchangePacket>();
@@ -95,7 +93,6 @@ void PacketHandler::Process<NET_MSG,AUTH_SEND_SALT>() const {
                              packet->nonce2, 8);
             client.SetHasher(authentifier->Hasher());
             client.SetVerifier(authentifier->Verifier());
-            client.SetAuthState(AUTH_KEY_EXCHANGE);
             frame.SendMessageNoVMAC(req->fd, NET_MSG, AUTH_KEY_EXCHANGE);
         }
     }
