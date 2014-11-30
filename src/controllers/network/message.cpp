@@ -31,7 +31,7 @@ void Message::Send(
 }
 
 
-void Message::Send(uint8_t major, uint8_t minor) {
+void Message::SendTCP(uint8_t major, uint8_t minor) {
     auto fd = TrillekGame::GetNetworkSystem().cnx.get_handle();
     Send(fd, major, minor, TrillekGame::GetNetworkSystem().Hasher(),
         Tail<unsigned char*>(), VMAC_SIZE, VMAC_SIZE);

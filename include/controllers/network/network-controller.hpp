@@ -47,7 +47,7 @@ public:
     friend void packet_handler::PacketHandler::Process<NET_MSG,AUTH_SEND_SALT>() const;
     friend void Authentication::CheckKeyExchange(const trillek_list<std::shared_ptr<Message>>& req_list);
     friend void Authentication::CreateSecureKey(const trillek_list<std::shared_ptr<Message>>& req_list);
-    friend void Message::Send(unsigned char major, unsigned char minor);
+    friend void Message::SendTCP(unsigned char major, unsigned char minor);
 
     NetworkController();
     ~NetworkController() {};
@@ -75,16 +75,14 @@ public:
     void SetTCPHandler() {
 
         handle_events = chain_t({
-            std::bind(&NetworkController::HandleEvents, std::cref(*this)),
-            // Get the length
-            std::bind(&NetworkController::ReassembleFrame<true>, std::cref(*this), &auth_rawframe_req, &auth_checked_frame_req),
-            std::bind(&NetworkController::AuthenticatedDispatch, std::cref(*this))
+            [&] () { return HandleEvents(); },
+            [&] () { return ReassembleFrame(&auth_rawframe_req, &auth_checked_frame_req); },
+            [&] () { return AuthenticatedDispatch(); }
         });
 
         unauthenticated_recv_data = chain_t({
-            // Get the length
-            std::bind(&NetworkController::ReassembleFrame<false>, std::cref(*this), &pub_rawframe_req, &pub_frame_req),
-            std::bind(&NetworkController::UnauthenticatedDispatch, std::cref(*this))
+            [&] () { return ReassembleFrame<false>(&pub_rawframe_req, &pub_frame_req); },
+            [&] () { return UnauthenticatedDispatch(); }
         });
     }
 

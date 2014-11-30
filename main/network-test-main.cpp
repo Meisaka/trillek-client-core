@@ -56,7 +56,7 @@ int main(int argCount, char **argValues) {
                 trillek::network::Message packet{};
                 std::string str("This is a big very big text ! #");
                 packet << str.append(std::to_string(i));
-                packet.Send(TEST_MSG, TEST_MSG);
+                packet.SendTCP(TEST_MSG, TEST_MSG);
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(1000));
         auto pkt = trillek::TrillekGame::GetNetworkSystem().GetPacketHandler().GetQueue<TEST_MSG,TEST_MSG>().Poll();
