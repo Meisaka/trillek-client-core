@@ -14,6 +14,7 @@
 #include "controllers/network/authentication-handler.hpp"
 #include "controllers/network/frame-request.hpp"
 #include "controllers/network/packet-handler-templates.hpp"
+#include "controllers/network/connection-data-udp.hpp"
 
 // the maximum number of bytes we can receive
 #define MAX_MESSAGE_SIZE    65535
@@ -255,6 +256,7 @@ private:
     std::function<void(unsigned char*,const unsigned char*,size_t)> hasher_udp;
 
     mutable std::unique_ptr<ConnectionData> connection_data;
+    mutable std::unique_ptr<ConnectionDataUDP> connection_data_udp;
     mutable std::mutex m_connection_data;
 
     // used to observe the connection process result from another thread

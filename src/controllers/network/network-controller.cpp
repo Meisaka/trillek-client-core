@@ -33,10 +33,12 @@ bool NetworkController::Connect(const std::string& host, uint16_t port,
         auto& cnx = cx_data->GetTCPConnection();
         NetworkAddress address(host, port);
         if (! cnx.init(address)) {
+            LOGMSG(ERROR) << "FATAL : Invalid address/port";
             return false;
         }
 
         if (! cnx.connect(address)) {
+            LOGMSG(ERROR) << "FATAL : No network";
             return false;
         }
         auto fd = cnx.get_handle();
@@ -55,6 +57,18 @@ bool NetworkController::Connect(const std::string& host, uint16_t port,
             });
     }
     if (AuthState() == AUTH_SHARE_KEY) {
+        // Open UDP socket
+        auto cx_udp = make_unique<ConnectionDataUDP>(UDPSocket());
+        auto& cnx_udp = cx_udp->GetUDPConnection();
+        if (! cnx_udp.init(NETA_IPv4)) {
+            return false;
+        }
+        NetworkAddress listen_address("localhost", port);
+        if (! cnx_udp.bind(listen_address)) {
+            LOGMSG(ERROR) << "FATAL : Invalid address/port";
+            return false;
+        }
+        this->connection_data_udp = std::move(cx_udp);
         return true;
     }
     {
