@@ -91,7 +91,7 @@ void PacketHandler::Process<NET_MSG,AUTH_SEND_SALT>() const {
                             (TrillekAllocator<cryptography::VMAC_StreamHasher>(),
                              std::move(hasher_key),
                              packet->nonce2, 8);
-            client.SetHasher(authentifier->Hasher());
+            client.SetHasherTCP(authentifier->Hasher());
             client.SetVerifier(authentifier->Verifier());
             frame.SendMessageNoVMAC(req->fd, NET_MSG, AUTH_KEY_EXCHANGE);
         }

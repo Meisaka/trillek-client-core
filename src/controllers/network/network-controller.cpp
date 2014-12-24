@@ -41,7 +41,7 @@ bool NetworkController::Connect(const std::string& host, uint16_t port,
         }
         auto fd = cnx.get_handle();
         poller.Create(fd);
-        connection_data = std::move(cx_data);
+        this->connection_data = std::move(cx_data);
 
         Message packet{};
         std::strncpy(packet.Content<AuthInitPacket, char>(), login.c_str(), LOGIN_FIELD_SIZE - 1);
@@ -90,7 +90,7 @@ int NetworkController::HandleEvents() const {
         if (evList[i].flags & EVFILT_READ) {
             // Data received
             // we retrieve the ConnectionData instance
-            auto cx_data = GetConnectionData();
+            auto cx_data = GetTCPConnectionData();
             if (! cx_data || ! cx_data->TryLockConnection()) {
                 // no instance or another thread is already on this socket ? leave
                 continue;
@@ -135,7 +135,7 @@ int NetworkController::HandleEvents() const {
 }
 
 void NetworkController::CloseConnection() const {
-    auto fd = GetHandle();
+    auto fd = GetTCPHandle();
     poller.Delete(fd);
     close(fd);
     SetAuthState(AUTH_NONE);

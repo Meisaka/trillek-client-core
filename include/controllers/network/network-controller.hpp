@@ -135,16 +135,16 @@ private:
      *
      * \param hasher the hasher functor
      */
-    void SetHasher(std::function<void(unsigned char*,const unsigned char*,size_t)>&& hasher) {
-        this->hasher = std::move(hasher);
+    void SetHasherTCP(std::function<void(unsigned char*,const unsigned char*,size_t)>&& hasher) {
+        this->hasher_tcp = std::move(hasher);
     };
 
     /** \brief Return the hasher functor used to add a tag to each packet sent
      *
      * \return the hasher functor
      */
-    std::function<void(unsigned char*,const unsigned char*,size_t)>& Hasher() {
-        return hasher;
+    std::function<void(unsigned char*,const unsigned char*,size_t)>& HasherTCP() {
+        return hasher_tcp;
     };
 
     /** \brief Set the verifier functor that will be used to check the tag of each packet received
@@ -226,9 +226,9 @@ private:
      */
     void SetEntityID(id_t eid) { entity_id = eid; };
 
-    socket_t GetHandle() const { return connection_data->GetTCPConnection().get_handle(); }
+    socket_t GetTCPHandle() const { return connection_data->GetTCPConnection().get_handle(); }
 
-    ConnectionData* GetConnectionData() const { return connection_data.get(); };
+    ConnectionData* GetTCPConnectionData() const { return connection_data.get(); };
 
     // instance of the kqueue
     const IOPoller poller;
@@ -251,7 +251,8 @@ private:
 
     std::vector<unsigned char> serverPublicKey;
     std::function<bool(const unsigned char*,const unsigned char*,size_t)> verifier;
-    std::function<void(unsigned char*,const unsigned char*,size_t)> hasher;
+    std::function<void(unsigned char*,const unsigned char*,size_t)> hasher_tcp;
+    std::function<void(unsigned char*,const unsigned char*,size_t)> hasher_udp;
 
     mutable std::unique_ptr<ConnectionData> connection_data;
     mutable std::mutex m_connection_data;

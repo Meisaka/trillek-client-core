@@ -32,8 +32,8 @@ void Message::Send(
 
 
 void Message::SendTCP(uint8_t major, uint8_t minor) {
-    auto fd = TrillekGame::GetNetworkSystem().GetHandle();
-    Send(fd, major, minor, TrillekGame::GetNetworkSystem().Hasher(),
+    auto fd = TrillekGame::GetNetworkSystem().GetTCPHandle();
+    Send(fd, major, minor, TrillekGame::GetNetworkSystem().HasherTCP(),
         Tail<unsigned char*>(), VMAC_SIZE, VMAC_SIZE);
 }
 
