@@ -10,11 +10,12 @@
 #include "controllers/network/io-poller.hpp"
 #include "atomic-queue.hpp"
 #include "controllers/network/TCPConnection.hpp"
-#include "controllers/network/message.hpp"
+#include "controllers/network/UDPSocket.hpp"
+#include "controllers/network/message-unauthenticated.hpp"
 #include "controllers/network/authentication-handler.hpp"
 #include "controllers/network/frame-request.hpp"
 #include "controllers/network/packet-handler-templates.hpp"
-#include "controllers/network/connection-data-udp.hpp"
+#include "controllers/network/connection-data.hpp"
 
 // the maximum number of bytes we can receive
 #define MAX_MESSAGE_SIZE    65535
@@ -25,6 +26,10 @@
 // the maximum number of bytes we will process from each authenticated socket
 // at each call of the event handler
 #define MAX_AUTHENTICATED_FRAME_SIZE      1460L
+
+// the maximum number of bytes we will process from the UDP socket
+// at each call of the event handler
+#define MAX_UDP_FRAME_SIZE                65507L
 
 // the maximum number of bytes we will process from each unauthenticated socket
 // at each call of the event handler
@@ -49,14 +54,17 @@ public:
     friend void Authentication::CheckKeyExchange(const trillek_list<std::shared_ptr<Message>>& req_list);
     friend void Authentication::CreateSecureKey(const trillek_list<std::shared_ptr<Message>>& req_list);
     friend void Message::SendTCP(unsigned char major, unsigned char minor);
+    friend void Message::SendUDP(unsigned char major, unsigned char minor);
 
     NetworkController();
     ~NetworkController() {};
 
     /** \brief Initialize the network controller
      *
+     * \param host const std::string& the local address to bind to
+     * \param port uint16_t the port to bind
      */
-    void Initialize();
+    void Initialize(const std::string& host, uint16_t port);
 
     /** \brief Connect a client to a server
      *
@@ -92,13 +100,18 @@ public:
 
         handle_events = chain_t({
             [&] () { return HandleEvents(); },
-            [&] () { return ReassembleFrame(&auth_rawframe_req, &auth_checked_frame_req); },
+            [&] () { return ReassembleFrame<Message>(&auth_rawframe_req, &auth_checked_frame_req); },
             [&] () { return AuthenticatedDispatch(); }
         });
 
         unauthenticated_recv_data = chain_t({
-            [&] () { return ReassembleFrame<false>(&pub_rawframe_req, &pub_frame_req); },
+            [&] () { return ReassembleFrame<MessageUnauthenticated,false>(&pub_rawframe_req, &pub_frame_req); },
             [&] () { return UnauthenticatedDispatch(); }
+        });
+
+        udp_recv_data = chain_t({
+            [&] () { return UDPFrameProcessing(&auth_checked_frame_req); },
+            [&] () { return AuthenticatedDispatch(); }
         });
     }
 
@@ -124,15 +137,7 @@ private:
         serverPublicKey = std::move(key);
     };
 
-    /** \brief The listener waits for connections and pass new connections
-     * to the IncomingConnection
-     *
-     * \param host const std::string& the host to bind
-     *
-     */
-    TCPConnection Listener(const std::string& host, unsigned short port);
-
-    /** \brief Set the hasher functor that will be used to add a tag to each packet sent
+    /** \brief Set the hasher functor that will be used to add a tag to each TCP packet sent
      *
      * \param hasher the hasher functor
      */
@@ -140,12 +145,28 @@ private:
         this->hasher_tcp = std::move(hasher);
     };
 
-    /** \brief Return the hasher functor used to add a tag to each packet sent
+    /** \brief Return the hasher functor used to add a tag to each TCP packet sent
      *
      * \return the hasher functor
      */
     std::function<void(unsigned char*,const unsigned char*,size_t)>& HasherTCP() {
         return hasher_tcp;
+    };
+
+    /** \brief Set the hasher functor that will be used to add a tag to each UDP packet sent
+     *
+     * \param hasher the hasher functor
+     */
+    void SetHasherUDP(std::function<void(unsigned char*,const unsigned char*,size_t)>&& hasher) {
+        this->hasher_udp = std::move(hasher);
+    };
+
+    /** \brief Return the hasher functor used to add a tag to each UDP packet sent
+     *
+     * \return the hasher functor
+     */
+    std::function<void(unsigned char*,const unsigned char*,size_t)>& HasherUDP() {
+        return hasher_udp;
     };
 
     /** \brief Set the verifier functor that will be used to check the tag of each packet received
@@ -161,14 +182,14 @@ private:
      * \param state the state
      *
      */
-    bool SetAuthState(uint32_t state) const { return connection_data->SetAuthState(state); };
+    bool SetAuthState(uint32_t state) const { return session_state->SetAuthState(state); };
 
     /** \brief Get the authentication state
      *
      * \return uint32_t the state
      *
      */
-    uint32_t AuthState() const { return connection_data ? connection_data->AuthState() : AUTH_NONE; };
+    uint32_t AuthState() const { return session_state ? session_state->AuthState() : AUTH_NONE; };
 
     const AtomicQueue<std::shared_ptr<Frame_req>>* const GetAuthenticatedRawFrameReqQueue() const { return &auth_rawframe_req; };
     const AtomicQueue<std::shared_ptr<Message>>* const GetAuthenticatedCheckedFrameQueue() const { return &auth_checked_frame_req; };
@@ -209,6 +230,14 @@ private:
      */
     int AuthenticatedDispatch() const;
 
+    /** \brief Process UDP datagrams
+     *
+     * \param output const AtomicQueue<std::shared_ptr<Message>>*const the queue where to put the messages
+     * \return int thez return code for the scheduler
+     *
+     */
+    int UDPFrameProcessing(const AtomicQueue<std::shared_ptr<Message>>* const output) const;
+
     /** \brief Return the public key used to check packets received from the server
      *
      * To be used only on client side
@@ -227,9 +256,11 @@ private:
      */
     void SetEntityID(id_t eid) { entity_id = eid; };
 
-    socket_t GetTCPHandle() const { return connection_data->GetTCPConnection().get_handle(); }
+    socket_t GetTCPHandle() const { return TCP_server_handle; }
+    socket_t GetUDPHandle() const { return UDP_server_handle; }
 
-    ConnectionData* GetTCPConnectionData() const { return connection_data.get(); };
+    TCPConnection* GetTCPConnection() const { return TCP_server_socket.get(); };
+    UDPSocket* GetUDPSocket() const { return udp_socket.get(); }
 
     // instance of the kqueue
     const IOPoller poller;
@@ -241,6 +272,7 @@ private:
     const packet_handler::PacketHandler packet_handler;
 
     // chain of block functions
+    chain_t udp_recv_data;
     chain_t unauthenticated_recv_data;
     chain_t handle_events;
 
@@ -255,9 +287,16 @@ private:
     std::function<void(unsigned char*,const unsigned char*,size_t)> hasher_tcp;
     std::function<void(unsigned char*,const unsigned char*,size_t)> hasher_udp;
 
-    mutable std::unique_ptr<ConnectionData> connection_data;
-    mutable std::unique_ptr<ConnectionDataUDP> connection_data_udp;
-    mutable std::mutex m_connection_data;
+    mutable std::unique_ptr<ConnectionData> session_state;
+
+    // the listening socket, static because all threads must read it
+    static std::unique_ptr<TCPConnection> TCP_server_socket;
+    static socket_t TCP_server_handle;
+
+    mutable std::unique_ptr<UDPSocket> udp_socket;
+    socket_t UDP_server_handle;
+
+    mutable std::mutex m_connection_data_tcp;
 
     // used to observe the connection process result from another thread
     mutable std::condition_variable is_connected;
@@ -278,7 +317,7 @@ private:
      * \return int return code
      *
      */
-    template<bool checkAuth = true>
+    template<class M, bool checkAuth = true>
     int ReassembleFrame(const AtomicQueue<std::shared_ptr<Frame_req>>* const input, const AtomicQueue<std::shared_ptr<Message>>* const output) const {
         auto req_list = input->Poll();
         trillek_list<std::shared_ptr<Frame_req>> temp_input;
@@ -352,8 +391,8 @@ private:
                     req->length_requested = sizeof(Frame_hdr);
 //						LOG_DEBUG << "(" << sched_getcpu() << ") Get another packet #" << req->reassembled_frames_list.size() << " from fd #" << frame->fd << " frome same frame.";
 
-                    req->reassembled_frames_list.push_back(std::allocate_shared<Message,TrillekAllocator<Message>>
-                                                                (TrillekAllocator<Message>(),req->fd, req->CxData()));
+                    req->reassembled_frames_list.push_back(std::allocate_shared<M>
+                                                                (TrillekAllocator<M>(), req->CxData(), req->fd));
                     // reset the timestamp to now
                     req->UpdateTimestamp();
                     // requeue the frame request for next message

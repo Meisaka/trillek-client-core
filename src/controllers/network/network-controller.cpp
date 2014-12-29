@@ -4,46 +4,72 @@
 #include <cstring>
 #include <typeinfo>
 #include <iostream>
-#include "composites/network-node.hpp"
 #include "controllers/network/ESIGN-signature.hpp"
+#include "controllers/network/network-node-data.hpp"
 #include "trillek-game.hpp"
 #include "logging.hpp"
+#include <thread>
 
 namespace trillek { namespace network {
 
+std::unique_ptr<TCPConnection> NetworkController::TCP_server_socket;
+socket_t NetworkController::TCP_server_handle;
+
 NetworkController::NetworkController() {};
 
-void NetworkController::Initialize() {
+void NetworkController::Initialize(const std::string& host, uint16_t port) {
     if (! poller.Initialize()) {
         LOGMSG(ERROR) << "FATAL : Could not initialize kqueue !";
         TrillekGame::NotifyCloseWindow();
     }
+    // Open UDP socket
+    auto cnx_udp = make_unique<UDPSocket>();
+    if (! cnx_udp->init(NETA_IPv4)) {
+        LOGMSG(ERROR) << "FATAL : Could not initialize socket.";
+        return;
+    }
+    auto fd = cnx_udp->get_handle();
+    set_nonblocking(fd, true);
+    NetworkAddress listen_address(host, port);
+    if (! cnx_udp->bind(listen_address)) {
+        LOGMSG(ERROR) << "FATAL : Invalid address/port";
+        return;
+    }
+    poller.Create(fd);
+    this->udp_socket = std::move(cnx_udp);
+    this->UDP_server_handle = fd;
 }
 
 bool NetworkController::Connect(const std::string& host, uint16_t port,
                         const std::string& login, const std::string& password) const {
+    NetworkAddress myaddress(host, port);
     {
-        std::unique_lock<std::mutex> locker(m_connection_data);
+        std::unique_lock<std::mutex> locker(m_connection_data_tcp);
+        if (TCP_server_socket) {
+            // already connected
+            return false;
+        }
         auto tr = std::make_shared<TaskRequest<chain_t>>(handle_events);
         TrillekGame::GetScheduler().Queue(tr);
 
         authentication.SetPassword(password);
 
-        auto cx_data = make_unique<ConnectionData>(AUTH_INIT,TCPConnection());
-        auto& cnx = cx_data->GetTCPConnection();
-        NetworkAddress address(host, port);
-        if (! cnx.init(address)) {
+        auto cnx = make_unique<TCPConnection>();
+        if (! cnx->init(myaddress)) {
             LOGMSG(ERROR) << "FATAL : Invalid address/port";
             return false;
         }
 
-        if (! cnx.connect(address)) {
+        if (! cnx->connect(myaddress)) {
             LOGMSG(ERROR) << "FATAL : No network";
             return false;
         }
-        auto fd = cnx.get_handle();
+        auto fd = cnx->get_handle();
         poller.Create(fd);
-        this->connection_data = std::move(cx_data);
+        auto node_data = std::allocate_shared<NetworkNodeData>(TrillekAllocator<NetworkNodeData>(), cnx->remote());
+        auto cd = make_unique<ConnectionData>(AUTH_INIT,std::move(node_data));
+        this->session_state = std::move(cd);
+        this->TCP_server_socket = std::move(cnx);
 
         Message packet{};
         std::strncpy(packet.Content<AuthInitPacket, char>(), login.c_str(), LOGIN_FIELD_SIZE - 1);
@@ -57,23 +83,11 @@ bool NetworkController::Connect(const std::string& host, uint16_t port,
             });
     }
     if (AuthState() == AUTH_SHARE_KEY) {
-        // Open UDP socket
-        auto cx_udp = make_unique<ConnectionDataUDP>(UDPSocket());
-        auto& cnx_udp = cx_udp->GetUDPConnection();
-        if (! cnx_udp.init(NETA_IPv4)) {
-            return false;
-        }
-        NetworkAddress listen_address("localhost", port);
-        if (! cnx_udp.bind(listen_address)) {
-            LOGMSG(ERROR) << "FATAL : Invalid address/port";
-            return false;
-        }
-        this->connection_data_udp = std::move(cx_udp);
-        return true;
+        return this->GetUDPSocket()->connect(myaddress);
     }
     {
-        std::unique_lock<std::mutex> locker(m_connection_data);
-        connection_data.reset();
+        std::unique_lock<std::mutex> locker(m_connection_data_tcp);
+        TCP_server_socket.reset();
     }
     return false;
 }
@@ -82,15 +96,18 @@ bool NetworkController::Connect(const std::string& host, uint16_t port,
 int NetworkController::HandleEvents() const {
     trillek_list<std::shared_ptr<Frame_req>> temp_public;
     trillek_list<std::shared_ptr<Frame_req>> temp_auth;
-    bool a = false, b = false;
+    trillek_list<std::shared_ptr<Frame_req>> temp_udp;
+
+    bool a = false, b = false, c = false;
 
     std::vector<struct kevent> evList(EVENT_LIST_SIZE);
     auto nev = Poller()->Poll(evList);
     if (nev < 0) {
-        std::cout << "(" << sched_getcpu() << ") Error when polling event" << std::endl;
+        std::cout << "(" << std::this_thread::get_id() << ") Error when polling event" << std::endl;
     }
 
     for (auto i=0; i<nev; i++) {
+//        LOGMSG(DEBUG) << "(" << std::this_thread::get_id() << ") loop on " << nev << " events.";
         auto fd = evList[i].ident;
         if (evList[i].flags & EV_EOF) {
             // connection closed
@@ -102,41 +119,53 @@ int NetworkController::HandleEvents() const {
             continue;
         }
         if (evList[i].flags & EVFILT_READ) {
-            // Data received
-            // we retrieve the ConnectionData instance
-            auto cx_data = GetTCPConnectionData();
-            if (! cx_data || ! cx_data->TryLockConnection()) {
-                // no instance or another thread is already on this socket ? leave
-                continue;
-            }
-            // now the socket is locked to the current thread
-            if (! cx_data->CompareAuthState(AUTH_SHARE_KEY)) {
-                // Data received, not authenticated
-                // Request the frame header
-                // queue the task to reassemble the frame
-                auto max_size = std::min(evList[i].data, static_cast<intptr_t>(MAX_UNAUTHENTICATED_FRAME_SIZE));
-                auto f = std::allocate_shared<Frame_req,TrillekAllocator<Frame_req>>
-                                        (TrillekAllocator<Frame_req>(),fd, max_size, cx_data);
-                temp_public.push_back(std::move(f));
-                a = true;
+            if (fd == GetUDPHandle()) {
+                // data received by UDP
+                c = true;
             }
             else {
-                // Data received from authenticated client
-                auto max_size = std::min(evList[i].data, static_cast<intptr_t>(MAX_AUTHENTICATED_FRAME_SIZE));
-                auto f = std::allocate_shared<Frame_req,TrillekAllocator<Frame_req>>
-                                        (TrillekAllocator<Frame_req>(),fd, max_size, cx_data);
-                temp_auth.push_back(std::move(f));
-                b = true;
+                // TCP Data received
+                // we retrieve the ConnectionData instance
+                if (! this->session_state || ! this->session_state->TryLockConnection()) {
+                    // no instance or another thread is already on this socket ? leave
+                    continue;
+                }
+                // now the socket is locked to the current thread
+                if (! this->session_state->CompareAuthState(AUTH_SHARE_KEY)) {
+                    // Data received, not authenticated
+                    // Request the frame header
+                    // queue the task to reassemble the frame
+                    auto max_size = std::min(evList[i].data, static_cast<intptr_t>(MAX_UNAUTHENTICATED_FRAME_SIZE));
+                    auto msg = std::allocate_shared<MessageUnauthenticated>
+                                            (TrillekAllocator<MessageUnauthenticated>(), this->session_state.get(), fd);
+                    auto f = std::allocate_shared<Frame_req,TrillekAllocator<Frame_req>>
+                                            (TrillekAllocator<Frame_req>(),fd, max_size, this->session_state.get(), std::move(msg));
+                    temp_public.push_back(std::move(f));
+                    a = true;
+                }
+                else {
+                    // Data received from authenticated client
+                    auto max_size = std::min(evList[i].data, static_cast<intptr_t>(MAX_AUTHENTICATED_FRAME_SIZE));
+                    auto msg = std::allocate_shared<Message>
+                                            (TrillekAllocator<Message>(), this->session_state.get(), fd);
+                    auto f = std::allocate_shared<Frame_req,TrillekAllocator<Frame_req>>
+                                            (TrillekAllocator<Frame_req>(),fd, max_size, this->session_state.get(), std::move(msg));
+                    temp_auth.push_back(std::move(f));
+                    b = true;
+                }
             }
         }
     }
 
-    if(a) {
+    if (c) {
+        TrillekGame::GetScheduler().Queue(std::make_shared<TaskRequest<chain_t>>(udp_recv_data));
+    }
+    if (a) {
         // if we got data from unauthenticated clients, push the public reassemble task
         GetPublicRawFrameReqQueue()->PushList(std::move(temp_public));
         TrillekGame::GetScheduler().Queue(std::make_shared<TaskRequest<chain_t>>(unauthenticated_recv_data));
     }
-    if(b) {
+    if (b) {
         // if we got data from authenticated clients, push the data
         GetAuthenticatedRawFrameReqQueue()->PushList(std::move(temp_auth));
         // continue on private reassemble, and requeue the present block
@@ -146,6 +175,42 @@ int NetworkController::HandleEvents() const {
         // Queue a task to wait another event
         return REQUEUE;
     }
+}
+
+int NetworkController::UDPFrameProcessing(const AtomicQueue<std::shared_ptr<Message>>* const output) const {
+    auto fd = GetUDPHandle();
+    std::list<std::shared_ptr<Message>,TrillekAllocator<std::shared_ptr<Message>>> reassembled_frames_list;
+    auto frame = std::allocate_shared<Message>(TrillekAllocator<Message>(),static_cast<intptr_t>(MAX_UDP_FRAME_SIZE));
+    char* buffer = reinterpret_cast<char*>(frame->FrameHeader());
+    int len;
+    while ((len = recv(fd, buffer, frame->PacketSize())) > 0) {
+//        LOGMSG(DEBUG) << "(" << std::this_thread::get_id() << ") Read " << len << " bytes from network";
+        // request completed
+        frame->ResizeNoTag(len - sizeof(Frame));
+        reassembled_frames_list.push_back(std::move(frame));
+        frame = std::allocate_shared<Message>(TrillekAllocator<Message>(),static_cast<intptr_t>(MAX_UDP_FRAME_SIZE));
+        buffer = reinterpret_cast<char*>(frame->FrameHeader());
+    }
+    // check integrity
+//    LOGMSG(DEBUG) << "(" << std::this_thread::get_id() << ") Checking integrity for " << reassembled_frames_list.size() << " messages.";
+    reassembled_frames_list.remove_if(
+        [](const std::shared_ptr<Message>& message) {
+            auto size_to_check = message->PacketSize() - ESIGN_SIZE;
+            message->RemoveTailClient();
+            auto tail = message->Tail<msg_tail*>();
+            return tail->entity_id !=
+                TrillekGame::GetNetworkSystem().EntityID() ||
+                ! (TrillekGame::GetNetworkSystem().Verifier())(
+                    tail->tag, reinterpret_cast<uint8_t*>(message->FrameHeader()),
+                    size_to_check);
+        });
+    // We unlock the socket
+    poller.Watch(fd);
+
+//    LOGMSG(DEBUG) << "(" << std::this_thread::get_id() << ") Moving " << reassembled_frames_list.size() << " messages.";
+    // we push the result of the current job
+    output->PushList(std::move(reassembled_frames_list));
+    return CONTINUE;
 }
 
 void NetworkController::CloseConnection() const {
@@ -219,7 +284,8 @@ int NetworkController::AuthenticatedDispatch() const {
     if (req_list.empty()) {
         return STOP;
     }
-    trillek_list<std::shared_ptr<Message>> temp_list;
+    trillek_list<std::shared_ptr<Message>> test_msg_tcp_list;
+    trillek_list<std::shared_ptr<Message>> test_msg_udp_list;
 //					LOG_DEBUG << "(" << sched_getcpu() << ") got " << req_list->size() << " AuthenticatedCheckedDispatchReq events";
     for (auto& req : req_list) {
         msg_hdr* header = req->Header();
@@ -230,9 +296,14 @@ int NetworkController::AuthenticatedDispatch() const {
             {
                 auto minor = header->type_minor;
                 switch(minor) {
-                    case TEST_MSG:
+                    case TEST_MSG_TCP:
                         {
-                            temp_list.push_back(std::move(req));
+                            test_msg_tcp_list.push_back(std::move(req));
+                            break;
+                        }
+                    case TEST_MSG_UDP:
+                        {
+                            test_msg_udp_list.push_back(std::move(req));
                             break;
                         }
                     default:
@@ -251,9 +322,11 @@ int NetworkController::AuthenticatedDispatch() const {
             }
         }
     }
-    if (! temp_list.empty()) {
-        packet_handler.GetQueue<TEST_MSG,TEST_MSG>().PushList(std::move(temp_list));
-        //packet_handler.Process<TEST_MSG,TEST_MSG>();
+    if (! test_msg_tcp_list.empty()) {
+        packet_handler.GetQueue<TEST_MSG,TEST_MSG_TCP>().PushList(std::move(test_msg_tcp_list));
+    }
+    if (! test_msg_udp_list.empty()) {
+        packet_handler.GetQueue<TEST_MSG,TEST_MSG_UDP>().PushList(std::move(test_msg_udp_list));
     }
     return STOP;
 }

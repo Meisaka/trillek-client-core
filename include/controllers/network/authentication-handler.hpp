@@ -55,19 +55,22 @@ struct KeyReplyPacket {
 
 struct KeyExchangePacket {
     byte salt[SALT_SIZE];
-    byte alea[ALEA_SIZE];								// Random number used to derive the shared secret
-    byte nonce2[NONCE2_SIZE];							// A random number used as nonce for the VMAC hasher to build
+    byte alea[ALEA_SIZE];								// Random number used to derive the shared secret for TCP
+    byte alea2[ALEA_SIZE];								// Random number used to derive the shared secret for UDP
+    byte nonce2[NONCE2_SIZE];							// A random number used as nonce for the TCP VMAC hasher to build
+    byte nonce3[NONCE2_SIZE];							// A random number used as nonce for the UDP VMAC hasher to build
     byte nonce[NONCE_SIZE];								// a random number used as nonce for the VMAC of this packet
     byte vmac[VMAC_SIZE];								// VMAC of the message using nonce and shared secret
 
-    std::unique_ptr<CryptoPP::FixedSizeAlignedSecBlock<byte,16>> VMAC_BuildHasher(const byte* key) const;
-    std::unique_ptr<CryptoPP::FixedSizeAlignedSecBlock<byte,16>> VMAC_BuildHasher() const;
+    std::unique_ptr<CryptoPP::FixedSizeAlignedSecBlock<byte,16>> VMAC_BuildHasher1() const;
+    std::unique_ptr<CryptoPP::FixedSizeAlignedSecBlock<byte,16>> VMAC_BuildHasher2() const;
     bool VerifyVMAC(const byte* key) const;
 };
 
 class Authentication final {
     friend Message SendSaltPacket::GetKeyExchangePacket();
-    friend std::unique_ptr<CryptoPP::FixedSizeAlignedSecBlock<byte,16>> KeyExchangePacket::VMAC_BuildHasher() const;
+    friend std::unique_ptr<CryptoPP::FixedSizeAlignedSecBlock<byte,16>> KeyExchangePacket::VMAC_BuildHasher1() const;
+    friend std::unique_ptr<CryptoPP::FixedSizeAlignedSecBlock<byte,16>> KeyExchangePacket::VMAC_BuildHasher2() const;
 
 public:
     Authentication() {};

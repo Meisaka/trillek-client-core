@@ -1,11 +1,17 @@
 #include "controllers/network/message.hpp"
 
-#include "composites/network-node.hpp"
 #include "controllers/network/network-controller.hpp"
+#include "controllers/network/network-node-data.hpp"
 #include "trillek-game.hpp"
 #include "logging.hpp"
 
 namespace trillek { namespace network {
+
+Message::Message(const ConnectionData* cnxd, const int fd) :
+        fd(fd), packet_size(sizeof(Frame)) {
+    node_data = cnxd ? cnxd->GetNodeData() : std::shared_ptr<NetworkNodeData>();
+    data.resize(sizeof(Frame) + sizeof(msg_tail));
+}
 
 void Message::Send(
             int fd,
@@ -30,6 +36,11 @@ void Message::Send(
 
 }
 
+void Message::SendUDP(uint8_t major, uint8_t minor) {
+    auto fd = TrillekGame::GetNetworkSystem().GetUDPHandle();
+    Send(fd, major, minor, TrillekGame::GetNetworkSystem().HasherUDP(),
+        Tail<unsigned char*>(), VMAC_SIZE, VMAC_SIZE);
+}
 
 void Message::SendTCP(uint8_t major, uint8_t minor) {
     auto fd = TrillekGame::GetNetworkSystem().GetTCPHandle();
@@ -58,7 +69,7 @@ void Message::append(const void* in, std::size_t sizeBytes) {
     std::memcpy(Tail<unsigned char*>() - sizeBytes, in, sizeBytes);
 }
 
-id_t Message::GetId() const { return cx_data->Id(); }
+id_t Message::GetId() const { return node_data->Id(); }
 
 template<>
 Message& Message::operator<<(const std::string& in) {

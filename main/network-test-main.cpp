@@ -41,7 +41,7 @@ int main(int argCount, char **argValues) {
                    5,
                    std::ref(systems));
     // Start the client network layer
-    trillek::TrillekGame::GetNetworkSystem().Initialize();
+    trillek::TrillekGame::GetNetworkSystem().Initialize("localhost", 7778);
     trillek::TrillekGame::GetNetworkSystem().SetTCPHandler();
 
 
@@ -56,15 +56,27 @@ int main(int argCount, char **argValues) {
                 trillek::network::Message packet{};
                 std::string str("This is a big very big text ! #");
                 packet << str.append(std::to_string(i));
-                packet.SendTCP(TEST_MSG, TEST_MSG);
+                packet.SendTCP(TEST_MSG, TEST_MSG_TCP);
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-        auto pkt = trillek::TrillekGame::GetNetworkSystem().GetPacketHandler().GetQueue<TEST_MSG,TEST_MSG>().Poll();
+        auto pkt = trillek::TrillekGame::GetNetworkSystem().GetPacketHandler().GetQueue<TEST_MSG,TEST_MSG_TCP>().Poll();
         if (pkt.size() == 10) {
-            std::cout << "Test successful." << std::endl;
+            std::cout << "TCP Test successful." << std::endl;
         }
         else {
-            std::cout << "The test failed." << pkt.size() << std::endl;
+            std::cout << "TCP test failed." << pkt.size() << std::endl;
+        }
+
+        for (auto& message : pkt) {
+            message->SendUDP(TEST_MSG, TEST_MSG_UDP);
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        pkt = trillek::TrillekGame::GetNetworkSystem().GetPacketHandler().GetQueue<TEST_MSG,TEST_MSG_UDP>().Poll();
+        if (pkt.size() == 10) {
+            std::cout << "UDP Test successful." << std::endl;
+        }
+        else {
+            std::cout << "UDP test failed." << pkt.size() << std::endl;
         }
     }
     trillek::TrillekGame::NotifyCloseWindow();

@@ -1,6 +1,7 @@
 #include "controllers/network/frame-request.hpp"
 #include "controllers/network/network-controller.hpp"
 #include "trillek-game.hpp"
+#include "logging.hpp"
 
 #if defined(_MSC_VER)
 #include "os.hpp"
@@ -31,7 +32,8 @@ void Frame_req::CheckIntegrityTag<true>() const {
         });
 }
 
-Frame_req::Frame_req(const int fd, size_t length_total, const ConnectionData* const cxdata_ptr) :
+Frame_req::Frame_req(const int fd, size_t length_total, const ConnectionData* const cxdata_ptr,
+                            std::shared_ptr<Message> message) :
     fd(fd), reassembled_frames_list(),
     length_total(length_total),
     length_requested(sizeof(Frame_hdr)),
@@ -43,7 +45,7 @@ Frame_req::Frame_req(const int fd, size_t length_total, const ConnectionData* co
     expiration_time(std::chrono::steady_clock::now() + timeout),
 #endif
     cx_data(cxdata_ptr) {
-    reassembled_frames_list.emplace_back(new Message(fd, cxdata_ptr));
+    reassembled_frames_list.push_back(std::move(message));
 };
 
 #if defined(_MSC_VER)
