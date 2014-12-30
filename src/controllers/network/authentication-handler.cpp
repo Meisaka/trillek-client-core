@@ -98,7 +98,7 @@ void PacketHandler::Process<NET_MSG,AUTH_SEND_SALT>() const {
             auto authentifier = std::allocate_shared<cryptography::VMAC_StreamHasher>
                             (TrillekAllocator<cryptography::VMAC_StreamHasher>(),
                              std::move(hasher_key),
-                             packet->nonce2, 8);
+                             packet->nonce2);
             client.SetHasherTCP(authentifier->Hasher());
             client.SetVerifier(authentifier->Verifier());
             // UDP hasher
@@ -106,7 +106,7 @@ void PacketHandler::Process<NET_MSG,AUTH_SEND_SALT>() const {
             authentifier = std::allocate_shared<cryptography::VMAC_StreamHasher>
                             (TrillekAllocator<cryptography::VMAC_StreamHasher>(),
                              std::move(hasher_key),
-                             packet->nonce3, 8);
+                             packet->nonce3);
             client.SetHasherUDP(authentifier->Hasher());
             frame.SendMessageNoVMAC(req->fd, NET_MSG, AUTH_KEY_EXCHANGE);
         }
