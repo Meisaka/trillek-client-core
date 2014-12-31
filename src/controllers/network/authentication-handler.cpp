@@ -45,7 +45,9 @@ void Authentication::CreateSecureKey(const trillek_list<std::shared_ptr<Message>
 
 Message SendSaltPacket::GetKeyExchangePacket() {
     // Client received salt
-    Message frame{};
+    auto buffer = std::make_shared<std::vector<char,TrillekAllocator<char>>>(TrillekAllocator<char>());
+    buffer->resize(sizeof(Frame)+sizeof(KeyExchangePacket)+8);
+    Message frame(buffer);
     auto packet = frame.Content<KeyExchangePacket>();
     // Derive password and salt to get key
     Crypto::PBKDF(Authentication::GetSecretKey(),
@@ -108,7 +110,7 @@ void PacketHandler::Process<NET_MSG,AUTH_SEND_SALT>() const {
                              std::move(hasher_key),
                              packet->nonce3);
             client.SetHasherUDP(authentifier->Hasher());
-            frame.SendMessageNoVMAC(req->fd, NET_MSG, AUTH_KEY_EXCHANGE);
+            frame.SendMessageNoVMAC(req->FileDescriptor(), NET_MSG, AUTH_KEY_EXCHANGE);
         }
     }
 }

@@ -27,9 +27,8 @@
 // at each call of the event handler
 #define MAX_AUTHENTICATED_FRAME_SIZE      1460L
 
-// the maximum number of bytes we will process from the UDP socket
-// at each call of the event handler
-#define MAX_UDP_FRAME_SIZE                65507L
+// the maximum number of bytes in an UDP datagram
+#define MAX_UDP_FRAME_SIZE                1480L
 
 // the maximum number of bytes we will process from each unauthenticated socket
 // at each call of the event handler
@@ -342,21 +341,21 @@ private:
                 continue;
             }
 
-            if (len > MAX_MESSAGE_SIZE) {
-//					LOG_DEBUG << "(" << sched_getcpu() << ") Packet length exceeding MAX_MESSAGE_SIZE bytes. closing";
-                CloseConnection();
-                continue;
-            }
             current_size += len;
             req->length_got = current_size;
 
             if (current_size == sizeof(Frame_hdr) && target_size == sizeof(Frame_hdr)) {
                 // We now have the length
-                auto length = frame->FrameHeader()->length;
                 target_size = frame->FrameHeader()->length + sizeof(Frame_hdr);
+
+                // we check that the frame will  enter in the alllocated buffer
+                if (target_size > frame->BufferSize()) {
+                    CloseConnection();
+                    continue;
+                }
 //					LOG_DEBUG << "(" << sched_getcpu() << ")  Completing message to " << target_size << " bytes in a frame of " << req->length_total << " bytes";
                 req->length_requested = target_size;
-                frame->ResizeNoTag(length - sizeof(msg_hdr));
+                frame->SetIndexPosition(target_size);
                 buffer = reinterpret_cast<char*>(frame->FrameHeader());
                 len = recv(req->fd, reinterpret_cast<char*>(buffer) + current_size, target_size - current_size);
                 if (len < 0) {
@@ -391,8 +390,10 @@ private:
                     req->length_requested = sizeof(Frame_hdr);
 //						LOG_DEBUG << "(" << sched_getcpu() << ") Get another packet #" << req->reassembled_frames_list.size() << " from fd #" << frame->fd << " frome same frame.";
 
+                    auto msg_buffer = std::make_shared<std::vector<char,TrillekAllocator<char>>>(TrillekAllocator<char>());
+                    msg_buffer->resize(MAX_MESSAGE_SIZE);
                     req->reassembled_frames_list.push_back(std::allocate_shared<M>
-                                                                (TrillekAllocator<M>(), req->CxData(), req->fd));
+                                                                (TrillekAllocator<M>(),msg_buffer, 0, msg_buffer->size(), req->CxData(),req->fd));
                     // reset the timestamp to now
                     req->UpdateTimestamp();
                     // requeue the frame request for next message

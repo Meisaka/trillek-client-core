@@ -71,7 +71,9 @@ bool NetworkController::Connect(const std::string& host, uint16_t port,
         this->session_state = std::move(cd);
         this->TCP_server_socket = std::move(cnx);
 
-        Message packet{};
+        auto msg_buffer = std::make_shared<std::vector<char,TrillekAllocator<char>>>(TrillekAllocator<char>());
+        msg_buffer->resize(sizeof(AuthInitPacket) + sizeof(Frame) + 8);
+        Message packet(msg_buffer);
         std::strncpy(packet.Content<AuthInitPacket, char>(), login.c_str(), LOGIN_FIELD_SIZE - 1);
         packet.SendMessageNoVMAC(fd, NET_MSG, AUTH_INIT);
     }
@@ -131,13 +133,15 @@ int NetworkController::HandleEvents() const {
                     continue;
                 }
                 // now the socket is locked to the current thread
+                auto buffer = std::make_shared<std::vector<char,TrillekAllocator<char>>>(TrillekAllocator<char>());
                 if (! this->session_state->CompareAuthState(AUTH_SHARE_KEY)) {
                     // Data received, not authenticated
                     // Request the frame header
                     // queue the task to reassemble the frame
                     auto max_size = std::min(evList[i].data, static_cast<intptr_t>(MAX_UNAUTHENTICATED_FRAME_SIZE));
+                    buffer->resize(MAX_MESSAGE_SIZE);
                     auto msg = std::allocate_shared<MessageUnauthenticated>
-                                            (TrillekAllocator<MessageUnauthenticated>(), this->session_state.get(), fd);
+                                            (TrillekAllocator<MessageUnauthenticated>(), buffer, 0, MAX_MESSAGE_SIZE, this->session_state.get(), fd);
                     auto f = std::allocate_shared<Frame_req,TrillekAllocator<Frame_req>>
                                             (TrillekAllocator<Frame_req>(),fd, max_size, this->session_state.get(), std::move(msg));
                     temp_public.push_back(std::move(f));
@@ -146,8 +150,9 @@ int NetworkController::HandleEvents() const {
                 else {
                     // Data received from authenticated client
                     auto max_size = std::min(evList[i].data, static_cast<intptr_t>(MAX_AUTHENTICATED_FRAME_SIZE));
-                    auto msg = std::allocate_shared<Message>
-                                            (TrillekAllocator<Message>(), this->session_state.get(), fd);
+                    buffer->resize(MAX_MESSAGE_SIZE);
+                    auto msg = std::allocate_shared<MessageUnauthenticated>
+                                            (TrillekAllocator<MessageUnauthenticated>(), buffer, 0, MAX_MESSAGE_SIZE, this->session_state.get(), fd);
                     auto f = std::allocate_shared<Frame_req,TrillekAllocator<Frame_req>>
                                             (TrillekAllocator<Frame_req>(),fd, max_size, this->session_state.get(), std::move(msg));
                     temp_auth.push_back(std::move(f));
@@ -180,15 +185,19 @@ int NetworkController::HandleEvents() const {
 int NetworkController::UDPFrameProcessing(const AtomicQueue<std::shared_ptr<Message>>* const output) const {
     auto fd = GetUDPHandle();
     std::list<std::shared_ptr<Message>,TrillekAllocator<std::shared_ptr<Message>>> reassembled_frames_list;
-    auto frame = std::allocate_shared<Message>(TrillekAllocator<Message>(),static_cast<intptr_t>(MAX_UDP_FRAME_SIZE));
+    auto msg_buffer = std::make_shared<std::vector<char,TrillekAllocator<char>>>(TrillekAllocator<char>());
+    msg_buffer->resize(static_cast<intptr_t>(MAX_UDP_FRAME_SIZE));
+    auto frame = std::allocate_shared<Message>(TrillekAllocator<Message>(),msg_buffer);
     char* buffer = reinterpret_cast<char*>(frame->FrameHeader());
     int len;
-    while ((len = recv(fd, buffer, frame->PacketSize())) > 0) {
+    while ((len = recv(fd, buffer, static_cast<intptr_t>(MAX_UDP_FRAME_SIZE))) > 0) {
 //        LOGMSG(DEBUG) << "(" << std::this_thread::get_id() << ") Read " << len << " bytes from network";
         // request completed
-        frame->ResizeNoTag(len - sizeof(Frame));
+        frame->SetIndexPosition(len);
         reassembled_frames_list.push_back(std::move(frame));
-        frame = std::allocate_shared<Message>(TrillekAllocator<Message>(),static_cast<intptr_t>(MAX_UDP_FRAME_SIZE));
+        msg_buffer = std::make_shared<std::vector<char,TrillekAllocator<char>>>(TrillekAllocator<char>());
+        msg_buffer->resize(static_cast<intptr_t>(MAX_UDP_FRAME_SIZE));
+        frame = std::allocate_shared<Message>(TrillekAllocator<Message>(),msg_buffer,0);
         buffer = reinterpret_cast<char*>(frame->FrameHeader());
     }
     // check integrity

@@ -53,7 +53,9 @@ int main(int argCount, char **argValues) {
     // Try a good password
     if(trillek::TrillekGame::GetNetworkSystem().Connect("localhost", 7777, "my_login", "secret password")) {
         for(auto i = 0; i < 10; ++i) {
-                trillek::network::Message packet{};
+                auto msg_buffer = std::make_shared<std::vector<char,trillek::TrillekAllocator<char>>>(trillek::TrillekAllocator<char>());
+                msg_buffer->resize(100);
+                trillek::network::Message packet(msg_buffer, 0);
                 std::string str("This is a big very big text ! #");
                 packet << str.append(std::to_string(i));
                 packet.SendTCP(TEST_MSG, TEST_MSG_TCP);
