@@ -90,7 +90,8 @@ void PacketHandler::Process<NET_MSG,AUTH_SEND_SALT>() const {
         return;
     }
     NetworkController &client = TrillekGame::GetNetworkSystem();
-    for(auto& req : req_list) {
+    for(auto& msg : req_list) {
+        auto req = std::static_pointer_cast<MessageUnauthenticated>(msg);
         if (client.SetAuthState(AUTH_KEY_EXCHANGE)) {
             // We must send keys
             auto frame = req->Content<SendSaltPacket>()->GetKeyExchangePacket();

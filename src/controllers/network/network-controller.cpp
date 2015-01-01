@@ -151,8 +151,8 @@ int NetworkController::HandleEvents() const {
                     // Data received from authenticated client
                     auto max_size = std::min(evList[i].data, static_cast<intptr_t>(MAX_AUTHENTICATED_FRAME_SIZE));
                     buffer->resize(MAX_MESSAGE_SIZE);
-                    auto msg = std::allocate_shared<MessageUnauthenticated>
-                                            (TrillekAllocator<MessageUnauthenticated>(), buffer, 0, MAX_MESSAGE_SIZE, this->session_state.get(), fd);
+                    auto msg = std::allocate_shared<Message>
+                                            (TrillekAllocator<Message>(), buffer, 0, MAX_MESSAGE_SIZE, this->session_state.get());
                     auto f = std::allocate_shared<Frame_req,TrillekAllocator<Frame_req>>
                                             (TrillekAllocator<Frame_req>(),fd, max_size, this->session_state.get(), std::move(msg));
                     temp_auth.push_back(std::move(f));

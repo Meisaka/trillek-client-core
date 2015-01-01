@@ -393,7 +393,7 @@ private:
                     auto msg_buffer = std::make_shared<std::vector<char,TrillekAllocator<char>>>(TrillekAllocator<char>());
                     msg_buffer->resize(MAX_MESSAGE_SIZE);
                     req->reassembled_frames_list.push_back(std::allocate_shared<M>
-                                                                (TrillekAllocator<M>(),msg_buffer, 0, msg_buffer->size(), req->CxData(),req->fd));
+                                                                (TrillekAllocator<M>(),msg_buffer, 0, msg_buffer->size(), req->CxData(), req->fd));
                     // reset the timestamp to now
                     req->UpdateTimestamp();
                     // requeue the frame request for next message
