@@ -127,12 +127,7 @@ int NetworkController::HandleEvents() const {
             }
             else {
                 // TCP Data received
-                // we retrieve the ConnectionData instance
-                if (! this->session_state || ! this->session_state->TryLockConnection()) {
-                    // no instance or another thread is already on this socket ? leave
-                    continue;
-                }
-                // now the socket is locked to the current thread
+                // the socket is only accessed by the current thread
                 auto buffer = std::make_shared<std::vector<char,TrillekAllocator<char>>>(TrillekAllocator<char>());
                 if (! this->session_state->CompareAuthState(AUTH_SHARE_KEY)) {
                     // Data received, not authenticated

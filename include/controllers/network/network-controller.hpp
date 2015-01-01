@@ -404,8 +404,7 @@ private:
                     // request completed
                     // check integrity
                     req->CheckIntegrityTag<checkAuth>();
-                    // We unlock the socket and allow again events on this socket
-                    req->CxData()->ReleaseConnection();
+                    // We allow again events on this socket
                     poller.Watch(req->fd);
 
 //						LOG_DEBUG << "(" << sched_getcpu() << ") Moving " << req->reassembled_frames_list.size() << " messages with a total of " << req->length_got << " bytes to queue";
