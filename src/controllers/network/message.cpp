@@ -26,7 +26,7 @@ Message::Message(const std::shared_ptr<std::vector<char,TrillekAllocator<char>>>
 void Message::Send(
             int fd,
             uint8_t major, uint8_t minor,
-            const std::function<void(uint8_t*,const uint8_t*,size_t)>& hasher,
+            const std::function<void(uint8_t*,const uint8_t*,size_t,uint64_t)>& hasher,
             uint8_t* tagptr,
             uint32_t tag_size) {
     auto header = Header();
@@ -36,7 +36,7 @@ void Message::Send(
     assert(index + tag_size <= data_size);
     // The VMAC Hasher has been put under id #1 for client
     (hasher)(tagptr,
-        reinterpret_cast<const uint8_t*>(data.get()), index);
+        reinterpret_cast<const uint8_t*>(data.get()), index, Timestamp());
 //    LOGMSG(DEBUG) << "Bytes to send : " << index;
     if (send(fd, reinterpret_cast<char*>(FrameHeader()),
             index + tag_size) <= 0) {
@@ -45,8 +45,9 @@ void Message::Send(
 
 }
 
-void Message::SendUDP(uint8_t major, uint8_t minor) {
+void Message::SendUDP(uint8_t major, uint8_t minor, uint64_t timestamp) {
     auto fd = TrillekGame::GetNetworkSystem().GetUDPHandle();
+    SetTimestamp(timestamp + TrillekGame::GetNetworkSystem().UDPCounter());
     Send(fd, major, minor, TrillekGame::GetNetworkSystem().HasherUDP(),
         Tail<unsigned char*>(), VMAC_SIZE);
 }

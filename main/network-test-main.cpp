@@ -69,8 +69,9 @@ int main(int argCount, char **argValues) {
             std::cout << "TCP test failed." << pkt.size() << std::endl;
         }
 
+        auto timestamp = trillek::TrillekGame::Now().time_since_epoch().count();
         for (auto& message : pkt) {
-            message->SendUDP(TEST_MSG, TEST_MSG_UDP);
+            message->SendUDP(TEST_MSG, TEST_MSG_UDP, timestamp);
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(1000));
         pkt = trillek::TrillekGame::GetNetworkSystem().GetPacketHandler().GetQueue<TEST_MSG,TEST_MSG_UDP>().Poll();

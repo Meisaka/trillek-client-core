@@ -53,7 +53,7 @@ public:
     friend void Authentication::CheckKeyExchange(const trillek_list<std::shared_ptr<Message>>& req_list);
     friend void Authentication::CreateSecureKey(const trillek_list<std::shared_ptr<Message>>& req_list);
     friend void Message::SendTCP(unsigned char major, unsigned char minor);
-    friend void Message::SendUDP(unsigned char major, unsigned char minor);
+    friend void Message::SendUDP(unsigned char major, unsigned char minor, uint64_t timestamp);
 
     NetworkController();
     ~NetworkController() {};
@@ -90,7 +90,13 @@ public:
      *
      * \return the verifier functor
      */
-    std::function<bool(const unsigned char*,const unsigned char*,size_t)>& Verifier() { return verifier; };
+    std::function<bool(const unsigned char*,const unsigned char*,size_t)>& ESIGNVerifier() { return esign_verifier; };
+
+    /** \brief Return the verifier functor used to check the tag of each packet received
+     *
+     * \return the verifier functor
+     */
+    std::function<bool(const unsigned char*,const unsigned char*,size_t,uint64_t)>& VMACVerifier() { return vmac_verifier; };
 
     /** \brief Initialize the TCP handler
      *
@@ -140,7 +146,7 @@ private:
      *
      * \param hasher the hasher functor
      */
-    void SetHasherTCP(std::function<void(unsigned char*,const unsigned char*,size_t)>&& hasher) {
+    void SetHasherTCP(std::function<void(unsigned char*,const unsigned char*,size_t,uint64_t)>&& hasher) {
         this->hasher_tcp = std::move(hasher);
     };
 
@@ -148,7 +154,7 @@ private:
      *
      * \return the hasher functor
      */
-    std::function<void(unsigned char*,const unsigned char*,size_t)>& HasherTCP() {
+    std::function<void(unsigned char*,const unsigned char*,size_t,uint64_t)>& HasherTCP() {
         return hasher_tcp;
     };
 
@@ -156,7 +162,7 @@ private:
      *
      * \param hasher the hasher functor
      */
-    void SetHasherUDP(std::function<void(unsigned char*,const unsigned char*,size_t)>&& hasher) {
+    void SetHasherUDP(std::function<void(unsigned char*,const unsigned char*,size_t,uint64_t)>&& hasher) {
         this->hasher_udp = std::move(hasher);
     };
 
@@ -164,7 +170,7 @@ private:
      *
      * \return the hasher functor
      */
-    std::function<void(unsigned char*,const unsigned char*,size_t)>& HasherUDP() {
+    std::function<void(unsigned char*,const unsigned char*,size_t,uint64_t)>& HasherUDP() {
         return hasher_udp;
     };
 
@@ -172,8 +178,16 @@ private:
      *
      * \param verifier the verifier functor
      */
-    void SetVerifier(std::function<bool(const unsigned char*,const unsigned char*,size_t)>&& verifier) {
-        this->verifier = std::move(verifier);
+    void SetESIGNVerifier(std::function<bool(const unsigned char*,const unsigned char*,size_t)>&& verifier) {
+        this->esign_verifier = std::move(verifier);
+    };
+
+    /** \brief Set the verifier functor that will be used to check the tag of each packet received
+     *
+     * \param verifier the verifier functor
+     */
+    void SetVMACVerifier(std::function<bool(const unsigned char*,const unsigned char*,size_t,int64_t)>&& verifier) {
+        this->vmac_verifier = std::move(verifier);
     };
 
     /** \brief Set the authentication state
@@ -255,6 +269,15 @@ private:
      */
     void SetEntityID(id_t eid) { entity_id = eid; };
 
+    /** \brief Increment and return the counter value
+     *
+     * \return std::uint_least16_t the counter
+     *
+     */
+    std::uint_least16_t UDPCounter() const {
+        return ++udp_counter;
+    }
+
     socket_t GetTCPHandle() const { return TCP_server_handle; }
     socket_t GetUDPHandle() const { return UDP_server_handle; }
 
@@ -282,9 +305,10 @@ private:
     const AtomicQueue<std::shared_ptr<Message>> pub_frame_req;				// reassembled frame request
 
     std::vector<unsigned char> serverPublicKey;
-    std::function<bool(const unsigned char*,const unsigned char*,size_t)> verifier;
-    std::function<void(unsigned char*,const unsigned char*,size_t)> hasher_tcp;
-    std::function<void(unsigned char*,const unsigned char*,size_t)> hasher_udp;
+    std::function<bool(const unsigned char*,const unsigned char*,size_t)> esign_verifier;
+    std::function<bool(const unsigned char*,const unsigned char*,size_t,uint64_t)> vmac_verifier;
+    std::function<void(unsigned char*,const unsigned char*,size_t,uint64_t)> hasher_tcp;
+    std::function<void(unsigned char*,const unsigned char*,size_t,uint64_t)> hasher_udp;
 
     mutable std::unique_ptr<ConnectionData> session_state;
 
@@ -294,6 +318,8 @@ private:
 
     mutable std::unique_ptr<UDPSocket> udp_socket;
     socket_t UDP_server_handle;
+    // counter added to the timestamp to produce a unique ID
+    mutable std::atomic_uint_least16_t udp_counter;
 
     mutable std::mutex m_connection_data_tcp;
 

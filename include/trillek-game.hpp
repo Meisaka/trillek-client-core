@@ -2,6 +2,7 @@
 #define TRILLEKGAME_HPP_INCLUDED
 
 #include "systems/lua-system.hpp"
+#include "trillek-scheduler.hpp"
 #include <memory>
 #include <mutex>
 
@@ -36,6 +37,13 @@ public:
     TrillekGame() {};
     ~TrillekGame() {};
     static void Initialize();
+
+    /** \brief Return the current time
+     *
+     * \return scheduler_tp a std::chrono::timepoint
+     *
+     */
+    static scheduler_tp Now() { return TaskRequestBase::Now(); };
 
     /** \brief Return the scheduler
      *

@@ -15,7 +15,9 @@ namespace trillek { namespace network {
 std::unique_ptr<TCPConnection> NetworkController::TCP_server_socket;
 socket_t NetworkController::TCP_server_handle;
 
-NetworkController::NetworkController() {};
+NetworkController::NetworkController() {
+    udp_counter.store(0);
+};
 
 void NetworkController::Initialize(const std::string& host, uint16_t port) {
     if (! poller.Initialize()) {
@@ -201,10 +203,10 @@ int NetworkController::UDPFrameProcessing(const AtomicQueue<std::shared_ptr<Mess
         [](const std::shared_ptr<Message>& message) {
             auto size_to_check = message->PacketSize() - ESIGN_SIZE;
             message->RemoveTailClient();
-            auto tail = message->Tail<msg_tail*>();
+            auto tail = message->Tail<msg_tail_stoc*>();
             return tail->entity_id !=
                 TrillekGame::GetNetworkSystem().EntityID() ||
-                ! (TrillekGame::GetNetworkSystem().Verifier())(
+                ! (TrillekGame::GetNetworkSystem().ESIGNVerifier())(
                     tail->tag, reinterpret_cast<uint8_t*>(message->FrameHeader()),
                     size_to_check);
         });

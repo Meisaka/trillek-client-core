@@ -23,10 +23,10 @@ void Frame_req::CheckIntegrityTag<true>() const {
         [&](const std::shared_ptr<Message>& message) {
             auto size_to_check = message->PacketSize() - ESIGN_SIZE;
             message->RemoveTailClient();
-            auto tail = message->Tail<msg_tail*>();
+            auto tail = message->Tail<msg_tail_stoc*>();
             return tail->entity_id !=
                 TrillekGame::GetNetworkSystem().EntityID() ||
-                ! (TrillekGame::GetNetworkSystem().Verifier())(
+                ! (TrillekGame::GetNetworkSystem().ESIGNVerifier())(
                     tail->tag, reinterpret_cast<uint8_t*>(message->FrameHeader()),
                     size_to_check);
         });

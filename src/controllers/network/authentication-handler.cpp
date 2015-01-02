@@ -3,6 +3,7 @@
 #include <cstring>
 #include "controllers/network/connection-data.hpp"
 #include "controllers/network/VMAC-stream-hasher.hpp"
+#include "controllers/network/VMAC-datagram-hasher.hpp"
 #include "controllers/network/ESIGN-signature.hpp"
 #include "trillek-game.hpp"
 #include "logging.hpp"
@@ -20,8 +21,8 @@ void Authentication::CreateSecureKey(const trillek_list<std::shared_ptr<Message>
         req->RemoveVMACTag();
         auto msg = reinterpret_cast<unsigned char*>(req->FrameHeader());
         NetworkController &client = TrillekGame::GetNetworkSystem();
-        auto v = client.Verifier();
-        if ((v)(req->Tail<const unsigned char*>(), msg, req->PacketSize()) && client.SetAuthState(AUTH_SHARE_KEY)) {
+        auto v = client.VMACVerifier();
+        if ((v)(req->Tail<const unsigned char*>(), msg, req->PacketSize(), 0) && client.SetAuthState(AUTH_SHARE_KEY)) {
             auto pkt = req->Content<KeyReplyPacket>();
             auto key = make_unique<std::vector<unsigned char>>(PUBLIC_KEY_SIZE);
             std::memcpy(key->data(), &pkt->challenge, PUBLIC_KEY_SIZE);
@@ -30,7 +31,7 @@ void Authentication::CreateSecureKey(const trillek_list<std::shared_ptr<Message>
             auto esign = std::make_shared<cryptography::ESIGN_Signature>();
             esign->SetPublicKey(std::move(key));
             esign->Initialize();
-            client.SetVerifier(esign->Verifier());
+            client.SetESIGNVerifier(esign->Verifier());
 			LOGMSG(DEBUG) << "Authentication OK";
             client.is_connected.notify_all();
         }
@@ -103,14 +104,13 @@ void PacketHandler::Process<NET_MSG,AUTH_SEND_SALT>() const {
                              std::move(hasher_key),
                              packet->nonce2);
             client.SetHasherTCP(authentifier->Hasher());
-            client.SetVerifier(authentifier->Verifier());
+            client.SetVMACVerifier(authentifier->Verifier());
             // UDP hasher
             hasher_key = std::move(packet->VMAC_BuildHasher2());
-            authentifier = std::allocate_shared<cryptography::VMAC_StreamHasher>
-                            (TrillekAllocator<cryptography::VMAC_StreamHasher>(),
-                             std::move(hasher_key),
-                             packet->nonce3);
-            client.SetHasherUDP(authentifier->Hasher());
+            auto authentifier_udp = std::allocate_shared<cryptography::VMAC_DatagramHasher>
+                            (TrillekAllocator<cryptography::VMAC_DatagramHasher>(),
+                             std::move(hasher_key));
+            client.SetHasherUDP(authentifier_udp->Hasher());
             frame.SendMessageNoVMAC(req->FileDescriptor(), NET_MSG, AUTH_KEY_EXCHANGE);
         }
     }
