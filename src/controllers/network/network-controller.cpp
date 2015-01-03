@@ -68,7 +68,11 @@ bool NetworkController::Connect(const std::string& host, uint16_t port,
         }
         auto fd = cnx->get_handle();
         poller.Create(fd);
-        auto node_data = std::allocate_shared<NetworkNodeData>(TrillekAllocator<NetworkNodeData>(), cnx->remote());
+        auto timestamp = TrillekGame::Now().time_since_epoch().count();
+        auto node_data = std::allocate_shared<NetworkNodeData>
+                            (TrillekAllocator<NetworkNodeData>(),
+                            cnx->remote(),
+                            timestamp);
         auto cd = make_unique<ConnectionData>(AUTH_INIT,std::move(node_data));
         this->session_state = std::move(cd);
         this->TCP_server_socket = std::move(cnx);
@@ -138,7 +142,7 @@ int NetworkController::HandleEvents() const {
                     auto max_size = std::min(evList[i].data, static_cast<intptr_t>(MAX_UNAUTHENTICATED_FRAME_SIZE));
                     buffer->resize(MAX_MESSAGE_SIZE);
                     auto msg = std::allocate_shared<MessageUnauthenticated>
-                                            (TrillekAllocator<MessageUnauthenticated>(), buffer, 0, MAX_MESSAGE_SIZE, this->session_state.get(), fd);
+                                            (TrillekAllocator<MessageUnauthenticated>(), buffer, 0, MAX_UNAUTHENTICATED_FRAME_SIZE, this->session_state.get(), fd);
                     auto f = std::allocate_shared<Frame_req,TrillekAllocator<Frame_req>>
                                             (TrillekAllocator<Frame_req>(),fd, max_size, this->session_state.get(), std::move(msg));
                     temp_public.push_back(std::move(f));
@@ -149,7 +153,7 @@ int NetworkController::HandleEvents() const {
                     auto max_size = std::min(evList[i].data, static_cast<intptr_t>(MAX_AUTHENTICATED_FRAME_SIZE));
                     buffer->resize(MAX_MESSAGE_SIZE);
                     auto msg = std::allocate_shared<Message>
-                                            (TrillekAllocator<Message>(), buffer, 0, MAX_MESSAGE_SIZE, this->session_state.get());
+                                            (TrillekAllocator<Message>(), buffer, 0, MAX_AUTHENTICATED_FRAME_SIZE, this->session_state.get());
                     auto f = std::allocate_shared<Frame_req,TrillekAllocator<Frame_req>>
                                             (TrillekAllocator<Frame_req>(),fd, max_size, this->session_state.get(), std::move(msg));
                     temp_auth.push_back(std::move(f));

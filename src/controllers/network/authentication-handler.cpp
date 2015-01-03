@@ -12,7 +12,7 @@ namespace trillek { namespace network {
 
 std::shared_ptr<chain_t> Authentication::auth_init_handler;
 std::string Authentication::password;
-CryptoPP::FixedSizeAlignedSecBlock<byte,16> Authentication::secret_key;
+std::shared_ptr<CryptoPP::FixedSizeAlignedSecBlock<byte,16>> Authentication::secret_key = std::make_shared<CryptoPP::FixedSizeAlignedSecBlock<byte,16>>();
 
 void Authentication::CreateSecureKey(const trillek_list<std::shared_ptr<Message>>& req_list) {
     // client side
@@ -51,7 +51,7 @@ Message SendSaltPacket::GetKeyExchangePacket() {
     Message frame(buffer);
     auto packet = frame.Content<KeyExchangePacket>();
     // Derive password and salt to get key
-    Crypto::PBKDF(Authentication::GetSecretKey(),
+    Crypto::PBKDF(Authentication::GetSecretKey()->data(),
             reinterpret_cast<const byte*>(Authentication::Password().data()),
             Authentication::Password().size(), salt, SALT_SIZE);
     std::memcpy(packet->salt, salt, SALT_SIZE);
@@ -60,8 +60,6 @@ Message SendSaltPacket::GetKeyExchangePacket() {
     Crypto::GetRandom128(packet->nonce3);
     Crypto::GetRandom128(packet->alea);
     Crypto::GetRandom128(packet->alea2);
-    Crypto::VMAC64(packet->vmac, frame.Content<KeyExchangePacket,const byte>(),
-             VMAC_MSG_SIZE, Authentication::GetSecretKey(), packet->nonce);
     return std::move(frame);
 }
 
@@ -70,7 +68,7 @@ std::unique_ptr<CryptoPP::FixedSizeAlignedSecBlock<byte,16>> KeyExchangePacket::
     // The variable that will hold the hasher key for this session
     auto checker_key = make_unique<CryptoPP::FixedSizeAlignedSecBlock<byte,16>>();
     // We derive the player key using the alea given by the player
-    Crypto::VMAC128(checker_key->data(), alea, ALEA_SIZE, Authentication::GetSecretKey(), nonce2);
+    Crypto::VMAC128(checker_key->data(), alea, ALEA_SIZE, Authentication::GetSecretKey()->data(), nonce2);
     return std::move(checker_key);
 }
 
@@ -79,7 +77,7 @@ std::unique_ptr<CryptoPP::FixedSizeAlignedSecBlock<byte,16>> KeyExchangePacket::
     // The variable that will hold the hasher key for this session
     auto checker_key = make_unique<CryptoPP::FixedSizeAlignedSecBlock<byte,16>>();
     // We derive the player key using the alea given by the player
-    Crypto::VMAC128(checker_key->data(), alea2, ALEA_SIZE, Authentication::GetSecretKey(), nonce3);
+    Crypto::VMAC128(checker_key->data(), alea2, ALEA_SIZE, Authentication::GetSecretKey()->data(), nonce3);
     return std::move(checker_key);
 }
 
@@ -111,7 +109,20 @@ void PacketHandler::Process<NET_MSG,AUTH_SEND_SALT>() const {
                             (TrillekAllocator<cryptography::VMAC_DatagramHasher>(),
                              std::move(hasher_key));
             client.SetHasherUDP(authentifier_udp->Hasher());
-            frame.SendMessageNoVMAC(req->FileDescriptor(), NET_MSG, AUTH_KEY_EXCHANGE);
+            // set the same timestamp as the packet received.
+            frame.SetTimestamp(req->Timestamp());
+            auto header = frame.Header();
+            header->type_major = NET_MSG;
+            header->type_minor = AUTH_KEY_EXCHANGE;
+            frame.FrameHeader()->length = frame.PacketSize() - sizeof(Frame_hdr) + VMAC_SIZE;
+            Crypto::VMAC64(frame.Tail<byte*>(), reinterpret_cast<byte*>(frame.FrameHeader()), frame.PacketSize(),
+                                                                    Authentication::GetSecretKey()->data(), packet->nonce);
+
+            frame.SetIndexPosition(frame.PacketSize() + VMAC_SIZE);
+            if (send(req->FileDescriptor(), reinterpret_cast<char*>(frame.FrameHeader()), frame.PacketSize()) <= 0) {
+                LOGMSG(ERROR) << "could not send frame with no tag to fd = " << req->FileDescriptor();
+            }
+
         }
     }
 }

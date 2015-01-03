@@ -18,7 +18,6 @@
 #define NONCE2_SIZE			16
 #define	NONCE_SIZE			8
 #define PUBLIC_KEY_SIZE     32
-#define VMAC_MSG_SIZE		(ALEA_SIZE + NONCE2_SIZE + NONCE_SIZE)
 
 #define AUTH_NONE			0
 #define AUTH_INIT			1
@@ -60,11 +59,9 @@ struct KeyExchangePacket {
     byte nonce2[NONCE2_SIZE];							// A random number used as nonce for the TCP VMAC hasher to build
     byte nonce3[NONCE2_SIZE];							// A random number used as nonce for the UDP VMAC hasher to build
     byte nonce[NONCE_SIZE];								// a random number used as nonce for the VMAC of this packet
-    byte vmac[VMAC_SIZE];								// VMAC of the message using nonce and shared secret
 
     std::unique_ptr<CryptoPP::FixedSizeAlignedSecBlock<byte,16>> VMAC_BuildHasher1() const;
     std::unique_ptr<CryptoPP::FixedSizeAlignedSecBlock<byte,16>> VMAC_BuildHasher2() const;
-    bool VerifyVMAC(const byte* key) const;
 };
 
 class Authentication final {
@@ -83,11 +80,11 @@ public:
 
     static const std::string& Password() { return password; };
 
-    static unsigned char* GetSecretKey() { return secret_key.data(); };
+    static std::shared_ptr<CryptoPP::FixedSizeAlignedSecBlock<byte,16>> GetSecretKey() { return secret_key; };
 
     static std::shared_ptr<chain_t> auth_init_handler;
     static std::string password;
-    static CryptoPP::FixedSizeAlignedSecBlock<byte,16> secret_key;
+    static std::shared_ptr<CryptoPP::FixedSizeAlignedSecBlock<byte,16>> secret_key;
 };
 
 struct AuthInitPacket {
