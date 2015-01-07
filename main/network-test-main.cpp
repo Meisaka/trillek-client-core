@@ -81,6 +81,23 @@ int main(int argCount, char **argValues) {
         else {
             std::cout << "UDP test failed." << pkt.size() << std::endl;
         }
+        auto load_task = []() {
+            auto msg_buffer = std::make_shared<std::vector<char,trillek::TrillekAllocator<char>>>(trillek::TrillekAllocator<char>());
+            msg_buffer->resize(100);
+            trillek::network::Message packet(msg_buffer, 0);
+            std::string str("Load test");
+            packet << str;
+            auto timestamp = trillek::TrillekGame::Now().time_since_epoch().count();
+            while(1) {
+                packet.SendUDP(TEST_MSG,UDP_ECHO, timestamp);
+                std::this_thread::sleep_for(std::chrono::microseconds(10));
+            }
+        };
+        std::thread load_thread(std::move(load_task));
+        while(1) {
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+            std::cout << "Echo reply received: " << trillek::TrillekGame::GetNetworkSystem().GetPacketHandler().GetQueue<TEST_MSG,TEST_MSG_UDP>().Poll().size() << std::endl;
+        }
     }
     trillek::TrillekGame::NotifyCloseWindow();
 
