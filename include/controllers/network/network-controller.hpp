@@ -102,9 +102,13 @@ public:
      *
      */
     void SetTCPHandler() {
-
         handle_events = chain_t({
             [&] () { return HandleEvents(); },
+            [&] () { return UDPFrameProcessing(&auth_checked_frame_req); },
+            [&] () { return AuthenticatedDispatch(); }
+        });
+
+        tcp_recv_data = chain_t({
             [&] () { return ReassembleFrame<Message>(&auth_rawframe_req, &auth_checked_frame_req); },
             [&] () { return AuthenticatedDispatch(); }
         });
@@ -112,11 +116,6 @@ public:
         unauthenticated_recv_data = chain_t({
             [&] () { return ReassembleFrame<MessageUnauthenticated,false>(&pub_rawframe_req, &pub_frame_req); },
             [&] () { return UnauthenticatedDispatch(); }
-        });
-
-        udp_recv_data = chain_t({
-            [&] () { return UDPFrameProcessing(&auth_checked_frame_req); },
-            [&] () { return AuthenticatedDispatch(); }
         });
     }
 
@@ -294,7 +293,7 @@ private:
     const packet_handler::PacketHandler packet_handler;
 
     // chain of block functions
-    chain_t udp_recv_data;
+    chain_t tcp_recv_data;
     chain_t unauthenticated_recv_data;
     chain_t handle_events;
 

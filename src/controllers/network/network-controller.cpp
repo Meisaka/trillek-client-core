@@ -163,18 +163,18 @@ int NetworkController::HandleEvents() const {
         }
     }
 
-    if (c) {
-        TrillekGame::GetScheduler().Queue(std::make_shared<TaskRequest<chain_t>>(udp_recv_data));
+    if (b) {
+        // if we got TCP data from authenticated clients, push the data
+        GetAuthenticatedRawFrameReqQueue()->PushList(std::move(temp_auth));
+        TrillekGame::GetScheduler().Queue(std::make_shared<TaskRequest<chain_t>>(tcp_recv_data));
     }
     if (a) {
-        // if we got data from unauthenticated clients, push the public reassemble task
+        // if we got TCP data from unauthenticated clients, push the public reassemble task
         GetPublicRawFrameReqQueue()->PushList(std::move(temp_public));
         TrillekGame::GetScheduler().Queue(std::make_shared<TaskRequest<chain_t>>(unauthenticated_recv_data));
     }
-    if (b) {
-        // if we got data from authenticated clients, push the data
-        GetAuthenticatedRawFrameReqQueue()->PushList(std::move(temp_auth));
-        // continue on private reassemble, and requeue the present block
+    if (c) {
+        // this thread jumps to UDP handler, and requeue a task for the present block
         return SPLIT;
     }
     else {
