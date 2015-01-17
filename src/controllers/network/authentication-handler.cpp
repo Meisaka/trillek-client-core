@@ -20,8 +20,8 @@ void Authentication::CreateSecureKey(const trillek_list<std::shared_ptr<Message>
         // We received reply
         req->RemoveVMACTag();
         auto msg = reinterpret_cast<unsigned char*>(req->FrameHeader());
-        NetworkController &client = TrillekGame::GetNetworkSystem();
-        auto v = client.VMACVerifier();
+        NetworkController& client = TrillekGame::GetNetworkSystem();
+        auto& v = client.VMACVerifierTCP();
         if ((v)(req->Tail<const unsigned char*>(), msg, req->PacketSize(), 0) && client.SetAuthState(AUTH_SHARE_KEY)) {
             auto pkt = req->Content<KeyReplyPacket>();
             auto key = make_unique<std::vector<unsigned char>>(PUBLIC_KEY_SIZE);
@@ -57,27 +57,19 @@ Message SendSaltPacket::GetKeyExchangePacket() {
     std::memcpy(packet->salt, salt, SALT_SIZE);
     Crypto::GetRandom64(packet->nonce);
     Crypto::GetRandom128(packet->nonce2);
-    Crypto::GetRandom128(packet->nonce3);
-    Crypto::GetRandom128(packet->alea);
+    Crypto::GetRandom128(packet->alea1);
     Crypto::GetRandom128(packet->alea2);
+    Crypto::GetRandom128(packet->alea3);
+    Crypto::GetRandom128(packet->alea4);
     return std::move(frame);
 }
 
-std::unique_ptr<CryptoPP::FixedSizeAlignedSecBlock<byte,16>> KeyExchangePacket::VMAC_BuildHasher1() const {
+std::unique_ptr<CryptoPP::FixedSizeAlignedSecBlock<byte,16>> KeyExchangePacket::DeriveKey(const byte* alea_param, const byte* nonce_param) const {
     // client side
     // The variable that will hold the hasher key for this session
     auto checker_key = make_unique<CryptoPP::FixedSizeAlignedSecBlock<byte,16>>();
     // We derive the player key using the alea given by the player
-    Crypto::VMAC128(checker_key->data(), alea, ALEA_SIZE, Authentication::GetSecretKey()->data(), nonce2);
-    return std::move(checker_key);
-}
-
-std::unique_ptr<CryptoPP::FixedSizeAlignedSecBlock<byte,16>> KeyExchangePacket::VMAC_BuildHasher2() const {
-    // client side
-    // The variable that will hold the hasher key for this session
-    auto checker_key = make_unique<CryptoPP::FixedSizeAlignedSecBlock<byte,16>>();
-    // We derive the player key using the alea given by the player
-    Crypto::VMAC128(checker_key->data(), alea2, ALEA_SIZE, Authentication::GetSecretKey()->data(), nonce3);
+    Crypto::VMAC128(checker_key->data(), alea_param, ALEA_SIZE, Authentication::GetSecretKey()->data(), nonce_param);
     return std::move(checker_key);
 }
 
@@ -95,20 +87,31 @@ void PacketHandler::Process<NET_MSG,AUTH_SEND_SALT>() const {
             // We must send keys
             auto frame = req->Content<SendSaltPacket>()->GetKeyExchangePacket();
             auto packet = frame.Content<KeyExchangePacket>();
-            // TCP hasher
-            auto hasher_key = std::move(packet->VMAC_BuildHasher1());
+            // TCP hasher, client to server
+            auto hasher_key = std::move(packet->DeriveKey(packet->alea1, packet->nonce2));
             auto authentifier = std::allocate_shared<cryptography::VMAC_StreamHasher>
                             (TrillekAllocator<cryptography::VMAC_StreamHasher>(),
                              std::move(hasher_key),
                              packet->nonce2);
             client.SetHasherTCP(authentifier->Hasher());
-            client.SetVMACVerifier(authentifier->Verifier());
-            // UDP hasher
-            hasher_key = std::move(packet->VMAC_BuildHasher2());
-            auto authentifier_udp = std::allocate_shared<cryptography::VMAC_DatagramHasher>
+            // UDP hasher, client to server
+            hasher_key = std::move(packet->DeriveKey(packet->alea2, packet->nonce2));
+            auto hasher_udp = std::allocate_shared<cryptography::VMAC_DatagramHasher>
                             (TrillekAllocator<cryptography::VMAC_DatagramHasher>(),
                              std::move(hasher_key));
-            client.SetHasherUDP(authentifier_udp->Hasher());
+            client.SetHasherUDP(hasher_udp->Hasher());
+            // TCP verifier, server to client
+            hasher_key = std::move(packet->DeriveKey(packet->alea3, packet->nonce2));
+            auto verifier_tcp = std::allocate_shared<cryptography::VMAC_StreamHasher>
+                            (TrillekAllocator<cryptography::VMAC_StreamHasher>(),
+                             std::move(hasher_key), packet->nonce2);
+            client.SetVMACVerifierTCP(verifier_tcp->Verifier());
+            // UDP verifier, server to client
+            hasher_key = std::move(packet->DeriveKey(packet->alea4, packet->nonce2));
+            auto verifier_udp = std::allocate_shared<cryptography::VMAC_DatagramHasher>
+                            (TrillekAllocator<cryptography::VMAC_DatagramHasher>(),
+                             std::move(hasher_key));
+            client.SetVMACVerifierUDP(verifier_udp->Verifier());
             // set the same timestamp as the packet received.
             frame.SetTimestamp(req->Timestamp());
             auto header = frame.Header();

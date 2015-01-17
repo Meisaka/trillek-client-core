@@ -21,14 +21,12 @@ template<>
 void Frame_req::CheckIntegrityTag<true>() const {
     reassembled_frames_list.remove_if(
         [&](const std::shared_ptr<Message>& message) {
-            auto size_to_check = message->PacketSize() - ESIGN_SIZE;
+            auto size_to_check = message->PacketSize() - VMAC_SIZE;
             message->RemoveTailClient();
             auto tail = message->Tail<msg_tail_stoc*>();
-            return tail->entity_id !=
-                TrillekGame::GetNetworkSystem().EntityID() ||
-                ! (TrillekGame::GetNetworkSystem().ESIGNVerifier())(
+            return ! (TrillekGame::GetNetworkSystem().VMACVerifierTCP())(
                     tail->tag, reinterpret_cast<uint8_t*>(message->FrameHeader()),
-                    size_to_check);
+                    size_to_check,0);
         });
 }
 

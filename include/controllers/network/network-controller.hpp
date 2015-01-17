@@ -92,11 +92,17 @@ public:
      */
     std::function<bool(const unsigned char*,const unsigned char*,size_t)>& ESIGNVerifier() { return esign_verifier; };
 
-    /** \brief Return the verifier functor used to check the tag of each packet received
+    /** \brief Return the verifier functor used to check the tag of each packet received by TCP
      *
      * \return the verifier functor
      */
-    std::function<bool(const unsigned char*,const unsigned char*,size_t,uint64_t)>& VMACVerifier() { return vmac_verifier; };
+    std::function<bool(const unsigned char*,const unsigned char*,size_t,uint64_t)>& VMACVerifierTCP() { return vmac_verifier_tcp; };
+
+    /** \brief Return the verifier functor used to check the tag of each packet received by UDP
+     *
+     * \return the verifier functor
+     */
+    std::function<bool(const unsigned char*,const unsigned char*,size_t,uint64_t)>& VMACVerifierUDP() { return vmac_verifier_udp; };
 
     /** \brief Initialize the TCP handler
      *
@@ -185,8 +191,16 @@ private:
      *
      * \param verifier the verifier functor
      */
-    void SetVMACVerifier(std::function<bool(const unsigned char*,const unsigned char*,size_t,int64_t)>&& verifier) {
-        this->vmac_verifier = std::move(verifier);
+    void SetVMACVerifierTCP(std::function<bool(const unsigned char*,const unsigned char*,size_t,int64_t)>&& verifier) {
+        this->vmac_verifier_tcp = std::move(verifier);
+    };
+
+    /** \brief Set the verifier functor that will be used to check the tag of each packet received
+     *
+     * \param verifier the verifier functor
+     */
+    void SetVMACVerifierUDP(std::function<bool(const unsigned char*,const unsigned char*,size_t,int64_t)>&& verifier) {
+        this->vmac_verifier_udp = std::move(verifier);
     };
 
     /** \brief Set the authentication state
@@ -305,7 +319,8 @@ private:
 
     std::vector<unsigned char> serverPublicKey;
     std::function<bool(const unsigned char*,const unsigned char*,size_t)> esign_verifier;
-    std::function<bool(const unsigned char*,const unsigned char*,size_t,uint64_t)> vmac_verifier;
+    std::function<bool(const unsigned char*,const unsigned char*,size_t,uint64_t)> vmac_verifier_tcp;
+    std::function<bool(const unsigned char*,const unsigned char*,size_t,uint64_t)> vmac_verifier_udp;
     std::function<void(unsigned char*,const unsigned char*,size_t,uint64_t)> hasher_tcp;
     std::function<void(unsigned char*,const unsigned char*,size_t,uint64_t)> hasher_udp;
 

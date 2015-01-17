@@ -205,14 +205,12 @@ int NetworkController::UDPFrameProcessing(const AtomicQueue<std::shared_ptr<Mess
 //    LOGMSG(DEBUG) << "(" << std::this_thread::get_id() << ") Checking integrity for " << reassembled_frames_list.size() << " messages.";
     reassembled_frames_list.remove_if(
         [](const std::shared_ptr<Message>& message) {
-            auto size_to_check = message->PacketSize() - ESIGN_SIZE;
+            auto size_to_check = message->PacketSize() - VMAC_SIZE;
             message->RemoveTailClient();
             auto tail = message->Tail<msg_tail_stoc*>();
-            return tail->entity_id !=
-                TrillekGame::GetNetworkSystem().EntityID() ||
-                ! (TrillekGame::GetNetworkSystem().ESIGNVerifier())(
+            return ! (TrillekGame::GetNetworkSystem().VMACVerifierUDP())(
                     tail->tag, reinterpret_cast<uint8_t*>(message->FrameHeader()),
-                    size_to_check);
+                    size_to_check, message->Timestamp());
         });
     // We unlock the socket
     poller.Watch(fd);
