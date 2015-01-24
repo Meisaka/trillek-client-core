@@ -52,13 +52,12 @@ int main(int argCount, char **argValues) {
 
     // Try a good password
     if(trillek::TrillekGame::GetNetworkSystem().Connect("localhost", 7777, "my_login", "secret password")) {
+        auto entity_id = trillek::TrillekGame::GetNetworkSystem().EntityID();
         for(auto i = 0; i < 10; ++i) {
-                auto msg_buffer = std::make_shared<std::vector<char,trillek::TrillekAllocator<char>>>(trillek::TrillekAllocator<char>());
-                msg_buffer->resize(100);
-                trillek::network::Message packet(msg_buffer, 0);
+                auto packet = trillek::network::Message::NewTCPMessage(entity_id, 100);
                 std::string str("This is a big very big text ! #");
-                packet << str.append(std::to_string(i));
-                packet.SendTCP(TEST_MSG, TEST_MSG_TCP);
+                *packet << str.append(std::to_string(i));
+                packet->SendTCP(TEST_MSG, TEST_MSG_TCP);
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(1000));
         auto pkt = trillek::TrillekGame::GetNetworkSystem().GetPacketHandler().GetQueue<TEST_MSG,TEST_MSG_TCP>().Poll();
@@ -81,10 +80,9 @@ int main(int argCount, char **argValues) {
         else {
             std::cout << "UDP test failed." << pkt.size() << std::endl;
         }
-        auto load_task = []() {
-            auto msg_buffer = std::make_shared<std::vector<char,trillek::TrillekAllocator<char>>>(trillek::TrillekAllocator<char>());
-            msg_buffer->resize(100);
-            trillek::network::Message packet(msg_buffer, 0);
+        auto load_task = [&entity_id]() {
+            auto packet_ptr = trillek::network::Message::NewUDPMessage(entity_id, 100);
+            auto& packet = *packet_ptr;
             std::string str("Load test");
             packet << str;
             auto timestamp = trillek::TrillekGame::Now().time_since_epoch().count();

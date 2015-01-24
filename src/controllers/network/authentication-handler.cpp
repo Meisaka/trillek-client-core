@@ -44,12 +44,10 @@ void Authentication::CreateSecureKey(const trillek_list<std::shared_ptr<Message>
     }
 }
 
-Message SendSaltPacket::GetKeyExchangePacket() {
+std::shared_ptr<Message> SendSaltPacket::GetKeyExchangePacket() {
     // Client received salt
-    auto buffer = std::make_shared<std::vector<char,TrillekAllocator<char>>>(TrillekAllocator<char>());
-    buffer->resize(sizeof(Frame)+sizeof(KeyExchangePacket)+8);
-    Message frame(buffer);
-    auto packet = frame.Content<KeyExchangePacket>();
+    auto frame = Message::NewTCPMessage(0, sizeof(Frame)+sizeof(KeyExchangePacket)+8);
+    auto packet = frame->Content<KeyExchangePacket>();
     // Derive password and salt to get key
     Crypto::PBKDF(Authentication::GetSecretKey()->data(),
             reinterpret_cast<const byte*>(Authentication::Password().data()),
@@ -85,7 +83,8 @@ void PacketHandler::Process<NET_MSG,AUTH_SEND_SALT>() const {
         auto req = std::static_pointer_cast<MessageUnauthenticated>(msg);
         if (client.SetAuthState(AUTH_KEY_EXCHANGE)) {
             // We must send keys
-            auto frame = req->Content<SendSaltPacket>()->GetKeyExchangePacket();
+            auto frame_ptr = req->Content<SendSaltPacket>()->GetKeyExchangePacket();
+            auto& frame = *frame_ptr;
             auto packet = frame.Content<KeyExchangePacket>();
             // TCP hasher, client to server
             auto hasher_key = std::move(packet->DeriveKey(packet->alea1, packet->nonce2));

@@ -17,7 +17,7 @@
 #include "controllers/network/packet-handler-templates.hpp"
 #include "controllers/network/connection-data.hpp"
 
-// the maximum number of bytes we can receive
+// the maximum number of bytes a message can contain
 #define MAX_MESSAGE_SIZE    65535
 
 // the number of events we get at each call of the event handler
@@ -28,7 +28,7 @@
 #define MAX_AUTHENTICATED_FRAME_SIZE      1460L
 
 // the maximum number of bytes in an UDP datagram
-#define MAX_UDP_FRAME_SIZE                1480L
+#define MAX_UDP_DATAGRAM_SIZE                1480L
 
 // the maximum number of bytes we will process from each unauthenticated socket
 // at each call of the event handler
@@ -432,10 +432,7 @@ private:
                     req->length_requested = sizeof(Frame_hdr);
 //						LOG_DEBUG << "(" << sched_getcpu() << ") Get another packet #" << req->reassembled_frames_list.size() << " from fd #" << frame->fd << " frome same frame.";
 
-                    auto msg_buffer = std::make_shared<std::vector<char,TrillekAllocator<char>>>(TrillekAllocator<char>());
-                    msg_buffer->resize(MAX_MESSAGE_SIZE);
-                    req->reassembled_frames_list.push_back(std::allocate_shared<M>
-                                                                (TrillekAllocator<M>(),msg_buffer, 0, frame->BufferSize(), req->CxData(), req->fd));
+                    req->reassembled_frames_list.push_back(M::NewReceivedMessage(MAX_MESSAGE_SIZE, req->CxData(), req->fd));
                     // reset the timestamp to now
                     req->UpdateTimestamp();
                     // requeue the frame request for next message

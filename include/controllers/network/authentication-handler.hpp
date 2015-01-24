@@ -41,7 +41,7 @@ class VMAC_StreamHasher;
 
 struct SendSaltPacket {
     byte salt[SALT_SIZE];								// the stored number used as salt for password
-    Message GetKeyExchangePacket();
+    std::shared_ptr<Message> GetKeyExchangePacket();
 };
 
 struct KeyExchangePacket;
@@ -65,7 +65,7 @@ struct KeyExchangePacket {
 };
 
 class Authentication final {
-    friend Message SendSaltPacket::GetKeyExchangePacket();
+    friend std::shared_ptr<Message> SendSaltPacket::GetKeyExchangePacket();
     friend std::unique_ptr<CryptoPP::FixedSizeAlignedSecBlock<byte,16>> KeyExchangePacket::DeriveKey(const byte*, const byte*) const;
 
 public:

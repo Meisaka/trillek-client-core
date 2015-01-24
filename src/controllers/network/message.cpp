@@ -7,20 +7,10 @@
 
 namespace trillek { namespace network {
 
-Message::Message(const std::shared_ptr<std::vector<char,TrillekAllocator<char>>>& buffer,
-                    size_t index, size_t size, const ConnectionData* cnxd, int fd) :
-        index(sizeof(Frame)), data(buffer, buffer->data() + index) {
-    node_data = cnxd ? cnxd->GetNodeData() : std::shared_ptr<NetworkNodeData>();
-    if (size) {
-        if (buffer->size() < index + size) {
-            buffer->resize(index + size);
-        }
-        data_size = size;
-    }
-    else {
-        assert(buffer->size() > index);
-        data_size = buffer->size() - index;
-    }
+Message::Message(std::shared_ptr<char>&& buffer,
+                    size_t size, const ConnectionData* cnxd) :
+        index(sizeof(Frame)), data(buffer), data_size(size) {
+        node_data = cnxd ? cnxd->GetNodeData() : std::shared_ptr<NetworkNodeData>();
 }
 
 void Message::Send(
