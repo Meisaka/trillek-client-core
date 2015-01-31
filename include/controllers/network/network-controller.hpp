@@ -387,10 +387,14 @@ private:
             if (current_size == sizeof(Frame_hdr) && target_size == sizeof(Frame_hdr)) {
                 // We now have the length
                 target_size = frame->FrameHeader()->length + sizeof(Frame_hdr);
-
+                if (target_size < sizeof(Frame_hdr)) {
+                    LOGMSG(WARNING) << "Integer overflow attempt in packet header. Closing.";
+                    CloseConnection();
+                    continue;
+                }
                 // we check that the frame will  enter in the alllocated buffer and is under the maximum size allowed
-                if (target_size + sizeof(Frame_hdr) > frame->BufferSize()) {
-                    LOGMSG(DEBUG) << "Message of size " << std::hex << target_size  + sizeof(Frame_hdr)
+                if (target_size > frame->BufferSize()) {
+                    LOGMSG(DEBUG) << "Message of size " << std::hex << target_size
                                                         << " bigger than buffer size of " << frame->BufferSize();
                     CloseConnection();
                     continue;
