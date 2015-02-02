@@ -18,6 +18,7 @@
 #include "tests/VMAC-stream-hasher-test.h"
 #include "tests/ESIGN-signature-test.h"
 #include "tests/fifo-allocator-test.hpp"
+#include "tests/stream-allocator-test.hpp"
 
 size_t gAllocatedSize = 0;
 
