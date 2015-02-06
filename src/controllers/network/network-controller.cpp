@@ -15,7 +15,9 @@ namespace trillek { namespace network {
 std::unique_ptr<TCPConnection> NetworkController::TCP_server_socket;
 socket_t NetworkController::TCP_server_handle;
 
-NetworkController::NetworkController() {
+NetworkController::NetworkController() :
+reliable_udp_buffer_alloc(make_unique<UDPReliableMessage::raw_allocator_type>())
+{
     udp_counter.store(0);
 };
 
@@ -77,7 +79,7 @@ bool NetworkController::Connect(const std::string& host, uint16_t port,
         this->session_state = std::move(cd);
         this->TCP_server_socket = std::move(cnx);
 
-        auto packet = Message::NewTCPMessage(0, sizeof(AuthInitPacket) + sizeof(Frame) + 8);
+        auto packet = Message::New<TCPMessage>(0, sizeof(AuthInitPacket) + sizeof(Frame) + 8);
         std::strncpy(packet->Content<AuthInitPacket, char>(), login.c_str(), LOGIN_FIELD_SIZE - 1);
         packet->SendMessageNoVMAC(fd, NET_MSG, AUTH_INIT);
     }
@@ -137,7 +139,7 @@ int NetworkController::HandleEvents() const {
                     // Request the frame header
                     // queue the task to reassemble the frame
                     auto max_size = std::min(evList[i].data, static_cast<intptr_t>(MAX_UNAUTHENTICATED_FRAME_SIZE));
-                    auto msg = MessageUnauthenticated::NewReceivedMessage
+                    auto msg = Message::New<MessageUnauthenticated>
                                             (MAX_MESSAGE_SIZE, this->session_state.get(), fd);
                     auto f = std::allocate_shared<Frame_req,TrillekAllocator<Frame_req>>
                                             (TrillekAllocator<Frame_req>(),fd, max_size, this->session_state.get(), std::move(msg));
@@ -147,7 +149,7 @@ int NetworkController::HandleEvents() const {
                 else {
                     // Data received from authenticated client
                     auto max_size = std::min(evList[i].data, static_cast<intptr_t>(MAX_AUTHENTICATED_FRAME_SIZE));
-                    auto msg = Message::NewReceivedMessage
+                    auto msg = Message::New<TCPMessage>
                                             (MAX_MESSAGE_SIZE, this->session_state.get());
                     auto f = std::allocate_shared<Frame_req,TrillekAllocator<Frame_req>>
                                             (TrillekAllocator<Frame_req>(),fd, max_size, this->session_state.get(), std::move(msg));
@@ -181,7 +183,7 @@ int NetworkController::HandleEvents() const {
 int NetworkController::UDPFrameProcessing(const AtomicQueue<std::shared_ptr<Message>>* const output) const {
     auto fd = GetUDPHandle();
     std::list<std::shared_ptr<Message>,TrillekAllocator<std::shared_ptr<Message>>> reassembled_frames_list;
-    auto frame = Message::NewReceivedMessage(static_cast<intptr_t>(MAX_UDP_DATAGRAM_SIZE));
+    auto frame = Message::New<UDPMessage>(static_cast<intptr_t>(MAX_UDP_DATAGRAM_SIZE));
     char* buffer = reinterpret_cast<char*>(frame->FrameHeader());
     int len;
     while ((len = recv(fd, buffer, static_cast<intptr_t>(MAX_UDP_DATAGRAM_SIZE))) > 0) {
@@ -189,7 +191,7 @@ int NetworkController::UDPFrameProcessing(const AtomicQueue<std::shared_ptr<Mess
         // request completed
         frame->SetIndexPosition(len);
         reassembled_frames_list.push_back(std::move(frame));
-        frame = Message::NewReceivedMessage(static_cast<intptr_t>(MAX_UDP_DATAGRAM_SIZE));
+        frame = Message::New<UDPMessage>(static_cast<intptr_t>(MAX_UDP_DATAGRAM_SIZE));
         buffer = reinterpret_cast<char*>(frame->FrameHeader());
     }
     // check integrity

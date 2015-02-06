@@ -12,6 +12,9 @@
 #include "controllers/network/TCPConnection.hpp"
 #include "controllers/network/UDPSocket.hpp"
 #include "controllers/network/message-unauthenticated.hpp"
+#include "controllers/network/reliable-udp-message.hpp"
+#include "controllers/network/tcp-message.hpp"
+#include "controllers/network/udp-message.hpp"
 #include "controllers/network/authentication-handler.hpp"
 #include "controllers/network/frame-request.hpp"
 #include "controllers/network/packet-handler-templates.hpp"
@@ -34,7 +37,13 @@
 // at each call of the event handler
 #define MAX_UNAUTHENTICATED_FRAME_SIZE      128L
 
-namespace trillek { namespace network {
+namespace trillek {
+
+namespace memory {
+    template<size_t size> class StreamAllocator;
+}
+
+namespace network {
 
 class TCPConnection;
 int recv(socket_t handle, char *, int);
@@ -52,8 +61,10 @@ public:
     friend void packet_handler::PacketHandler::Process<NET_MSG,AUTH_SEND_SALT>() const;
     friend void Authentication::CheckKeyExchange(const trillek_list<std::shared_ptr<Message>>& req_list);
     friend void Authentication::CreateSecureKey(const trillek_list<std::shared_ptr<Message>>& req_list);
-    friend void Message::SendTCP(unsigned char major, unsigned char minor);
-    friend void Message::SendUDP(unsigned char major, unsigned char minor, uint64_t timestamp);
+    friend void TCPMessage::Send(unsigned char major, unsigned char minor);
+    friend void UDPMessage::Send(unsigned char major, unsigned char minor, uint64_t timestamp);
+    friend void UDPReliableMessage::Send(unsigned char major, unsigned char minor, uint64_t timestamp);
+    friend UDPReliableMessage::allocator_type UDPReliableMessage::GetAllocator();
 
     NetworkController();
     ~NetworkController() {};
@@ -115,7 +126,7 @@ public:
         });
 
         tcp_recv_data = chain_t({
-            [&] () { return ReassembleFrame<Message>(&auth_rawframe_req, &auth_checked_frame_req); },
+            [&] () { return ReassembleFrame<TCPMessage>(&auth_rawframe_req, &auth_checked_frame_req); },
             [&] () { return AuthenticatedDispatch(); }
         });
 
@@ -291,6 +302,16 @@ private:
         return ++udp_counter;
     }
 
+    /** \brief Return the allocator for the send buffer of UDP reliable
+     * messages.
+     *
+     * \return a copy of the allocator
+     *
+     */
+    UDPReliableMessage::allocator_type ReliableUDPBufferAllocator() {
+        return UDPReliableMessage::allocator_type(reliable_udp_buffer_alloc.get());
+    }
+
     socket_t GetTCPHandle() const { return TCP_server_handle; }
     socket_t GetUDPHandle() const { return UDP_server_handle; }
 
@@ -343,6 +364,8 @@ private:
     mutable std::mutex connecting;
     // the entity ID provided by the server
     id_t entity_id;
+    // the allocator for reliable UDP buffer
+    std::unique_ptr<UDPReliableMessage::raw_allocator_type> reliable_udp_buffer_alloc;
 
     /** \brief Process the frame requests of input and put the reassembled messages in output
      *
@@ -436,7 +459,7 @@ private:
                     req->length_requested = sizeof(Frame_hdr);
 //						LOG_DEBUG << "(" << sched_getcpu() << ") Get another packet #" << req->reassembled_frames_list.size() << " from fd #" << frame->fd << " frome same frame.";
 
-                    req->reassembled_frames_list.push_back(M::NewReceivedMessage(MAX_MESSAGE_SIZE, req->CxData(), req->fd));
+                    req->reassembled_frames_list.push_back(Message::New<M>(MAX_MESSAGE_SIZE, req->CxData(), req->fd));
                     // reset the timestamp to now
                     req->UpdateTimestamp();
                     // requeue the frame request for next message

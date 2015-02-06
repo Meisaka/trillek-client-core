@@ -46,7 +46,7 @@ void Authentication::CreateSecureKey(const trillek_list<std::shared_ptr<Message>
 
 std::shared_ptr<Message> SendSaltPacket::GetKeyExchangePacket() {
     // Client received salt
-    auto frame = Message::NewTCPMessage(0, sizeof(Frame)+sizeof(KeyExchangePacket)+8);
+    auto frame = Message::New<TCPMessage>(0, sizeof(Frame)+sizeof(KeyExchangePacket)+8);
     auto packet = frame->Content<KeyExchangePacket>();
     // Derive password and salt to get key
     Crypto::PBKDF(Authentication::GetSecretKey()->data(),

@@ -7,8 +7,7 @@
 
 namespace trillek { namespace network {
 
-Message::Message(std::shared_ptr<char>&& buffer,
-                    size_t size, const ConnectionData* cnxd) :
+Message::Message(char* buffer, size_t size, const ConnectionData* cnxd, int fd) :
         index(sizeof(Frame)), data(buffer), data_size(size) {
         node_data = cnxd ? cnxd->GetNodeData() : std::shared_ptr<NetworkNodeData>();
 }
@@ -19,33 +18,31 @@ void Message::Send(
             const std::function<void(uint8_t*,const uint8_t*,size_t,uint64_t)>& hasher,
             uint8_t* tagptr,
             uint32_t tag_size) {
+    Prepare(major, minor);
+    SendNow(fd, hasher, tagptr, tag_size);
+}
+
+void Message::Prepare(uint8_t major, uint8_t minor) {
     auto header = Header();
     header->type_major = major;
     header->type_minor = minor;
+}
+
+void Message::SendNow(
+            int fd,
+            const std::function<void(uint8_t*,const uint8_t*,size_t,uint64_t)>& hasher,
+            uint8_t* tagptr,
+            uint32_t tag_size) {
+    // The VMAC Hasher has been put under id #1 for client
     FrameHeader()->length = index + tag_size - sizeof(Frame_hdr);
     assert(index + tag_size <= data_size);
-    // The VMAC Hasher has been put under id #1 for client
     (hasher)(tagptr,
-        reinterpret_cast<const uint8_t*>(data.get()), index, Timestamp());
+        reinterpret_cast<const uint8_t*>(data), index, Timestamp());
 //    LOGMSG(DEBUG) << "Bytes to send : " << index;
     if (send(fd, reinterpret_cast<char*>(FrameHeader()),
             index + tag_size) <= 0) {
 		LOGMSG(ERROR) << "could not send authenticated frame" ;
     };
-
-}
-
-void Message::SendUDP(uint8_t major, uint8_t minor, uint64_t timestamp) {
-    auto fd = TrillekGame::GetNetworkSystem().GetUDPHandle();
-    SetTimestamp(timestamp + TrillekGame::GetNetworkSystem().UDPCounter());
-    Send(fd, major, minor, TrillekGame::GetNetworkSystem().HasherUDP(),
-        Tail<unsigned char*>(), VMAC_SIZE);
-}
-
-void Message::SendTCP(uint8_t major, uint8_t minor) {
-    auto fd = TrillekGame::GetNetworkSystem().GetTCPHandle();
-    Send(fd, major, minor, TrillekGame::GetNetworkSystem().HasherTCP(),
-        Tail<unsigned char*>(), VMAC_SIZE);
 }
 
 id_t Message::GetId() const { return node_data->Id(); }

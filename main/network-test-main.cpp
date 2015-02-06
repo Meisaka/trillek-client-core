@@ -54,10 +54,10 @@ int main(int argCount, char **argValues) {
     if(trillek::TrillekGame::GetNetworkSystem().Connect("localhost", 7777, "my_login", "secret password")) {
         auto entity_id = trillek::TrillekGame::GetNetworkSystem().EntityID();
         for(auto i = 0; i < 10; ++i) {
-                auto packet = trillek::network::Message::NewTCPMessage(entity_id, 100);
-                std::string str("This is a big very big text ! #");
+                auto packet = trillek::network::Message::New<trillek::network::TCPMessage>(entity_id, 100);
+                std::string str("This is a big very big TCP text ! #");
                 *packet << str.append(std::to_string(i));
-                packet->SendTCP(TEST_MSG, TEST_MSG_TCP);
+                packet->Send(TEST_MSG, TEST_MSG_TCP);
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(1000));
         auto pkt = trillek::TrillekGame::GetNetworkSystem().GetPacketHandler().GetQueue<TEST_MSG,TEST_MSG_TCP>().Poll();
@@ -69,8 +69,11 @@ int main(int argCount, char **argValues) {
         }
 
         auto timestamp = trillek::TrillekGame::Now().time_since_epoch().count();
-        for (auto& message : pkt) {
-            message->SendUDP(TEST_MSG, TEST_MSG_UDP, timestamp);
+        for(auto i = 0; i < 10; ++i) {
+                auto packet = trillek::network::Message::New<trillek::network::UDPMessage>(entity_id, 100);
+                std::string str("This is a big very big UDP text ! #");
+                *packet << str.append(std::to_string(i));
+                packet->Send(TEST_MSG, TEST_MSG_UDP, ++timestamp);
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(1000));
         pkt = trillek::TrillekGame::GetNetworkSystem().GetPacketHandler().GetQueue<TEST_MSG,TEST_MSG_UDP>().Poll();
@@ -80,14 +83,31 @@ int main(int argCount, char **argValues) {
         else {
             std::cout << "UDP test failed." << pkt.size() << std::endl;
         }
+
+        timestamp = trillek::TrillekGame::Now().time_since_epoch().count();
+        for(auto i = 0; i < 10; ++i) {
+                auto packet = trillek::network::Message::New<trillek::network::UDPReliableMessage>(entity_id, 100);
+                std::string str("This is a big very big UDP Reliable text ! #");
+                *packet << str.append(std::to_string(i));
+                packet->Send(TEST_MSG, TEST_MSG_UDP, ++timestamp);
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        pkt = trillek::TrillekGame::GetNetworkSystem().GetPacketHandler().GetQueue<TEST_MSG,TEST_MSG_UDP>().Poll();
+        if (pkt.size() == 10) {
+            std::cout << "UDP Reliable Test successful." << std::endl;
+        }
+        else {
+            std::cout << "UDP Reliable test failed." << pkt.size() << std::endl;
+        }
+
         auto load_task = [&entity_id]() {
-            auto packet_ptr = trillek::network::Message::NewUDPMessage(entity_id, 100);
+            auto packet_ptr = trillek::network::Message::New<trillek::network::UDPMessage>(entity_id, 100);
             auto& packet = *packet_ptr;
             std::string str("Load test");
             packet << str;
             auto timestamp = trillek::TrillekGame::Now().time_since_epoch().count();
             while(1) {
-                packet.SendUDP(TEST_MSG,UDP_ECHO, timestamp);
+                packet.Send(TEST_MSG,UDP_ECHO, timestamp);
                 std::this_thread::sleep_for(std::chrono::microseconds(10));
             }
         };
