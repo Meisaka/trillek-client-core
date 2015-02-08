@@ -3,6 +3,7 @@
 #include "trillek-scheduler.hpp"
 #include "os.hpp"
 #include "systems/fake-system.hpp"
+#include "controllers/network/network-controller.hpp"
 #include "systems/physics.hpp"
 #include "systems/meta-engine-system.hpp"
 #include "systems/sound-system.hpp"
@@ -31,6 +32,7 @@ void TrillekGame::Terminate() {
     fake_system.reset();
     glfw_os.reset();
     phys_sys.reset();
+    network_system.reset();
     scheduler.reset();
 }
 
@@ -38,6 +40,7 @@ void TrillekGame::Initialize() {
     ActionText::RegisterStatic();
     scheduler.reset(new TrillekScheduler);
     fake_system.reset(new FakeSystem);
+    network_system.reset(new network::NetworkController);
     phys_sys.reset(new physics::PhysicsSystem);
     glfw_os.reset(new OS);
     lua_sys.reset(new script::LuaSystem());
@@ -47,6 +50,10 @@ void TrillekGame::Initialize() {
     close_window = false;
     engine_sys.reset(new MetaEngineSystem);
     vcomputer_system.reset(new VComputerSystem);
+}
+
+scheduler_tp TrillekGame::Now() {
+    return TaskRequestBase::Now();
 }
 
 sound::System& TrillekGame::GetSoundSystem() {

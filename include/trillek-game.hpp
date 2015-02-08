@@ -17,6 +17,9 @@ class FakeSystem;
 class OS;
 class VComputerSystem;
 
+namespace network {
+class NetworkController;
+}
 namespace graphics {
 class RenderSystem;
 }
@@ -37,6 +40,12 @@ public:
     ~TrillekGame();
     void Initialize();
     void Terminate();
+
+    /** \brief Return the current time
+     *
+     * \return scheduler_tp a std::chrono::timepoint
+     */
+    static scheduler_tp Now();
 
     /** \brief Return the scheduler
      *
@@ -60,6 +69,12 @@ public:
      * Get a reference to the GUI system
      */
     gui::GuiSystem& GetGUISystem();
+
+    /** \brief Get the server network controller
+     *
+     * \return NetworkController& the network controller
+     */
+    network::NetworkController& GetNetworkSystem() { return *network_system.get(); }
 
     /** \brief Get the FakeSystem
      *
@@ -126,6 +141,7 @@ private:
     std::unique_ptr<TrillekScheduler> scheduler;
     std::unique_ptr<FakeSystem> fake_system;
     std::unique_ptr<physics::PhysicsSystem> phys_sys;
+    std::unique_ptr<network::NetworkController> network_system;
     std::unique_ptr<OS> glfw_os;
     std::unique_ptr<VComputerSystem> vcomputer_system;
     bool close_window;

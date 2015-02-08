@@ -17,7 +17,6 @@ SET(CMAKE_INCLUDE_PATH ${CMAKE_INCLUDE_PATH} ${CMAKE_SOURCE_DIR}/include
 
 # set options early
 SET(TCC_BUILD_TESTS CACHE BOOL "Parse the tests directory")
-SET(TCC_TEST_NETWORK_DISABLE OFF CACHE BOOL "Disable the network unit test")
 
 # find all source files in the src directory
 FILE(GLOB_RECURSE TCC_SRC "src/*.cpp" "common/src/*.cpp")
@@ -155,14 +154,38 @@ SET(Backend_LIBS
 INCLUDE_DIRECTORIES("${CMAKE_SOURCE_DIR}/common/trillek-vcomputer-module/include")
 INCLUDE_DIRECTORIES("${CMAKE_SOURCE_DIR}/common/trillek-vcomputer-module/src")
 
-SET(Trillek_Server_LIBS ${Backend_LIBS})
-SET(Trillek_Client_LIBS ${Backend_LIBS} ${Frontend_LIBS})
-SET(Trillek_Standalone_LIBS ${Trillek_Client_LIBS})
+ADD_SUBDIRECTORY (${CMAKE_SOURCE_DIR}/common/kqueue)
 
-# Visio C++ needs GLFW for the clock
-IF (MSVC) # Visual C++
-    SET(Trillek_Server_LIBS ${Trillek_Server_LIBS} ${Graphics_LIBS})
-ENDIF (MSVC)
+SET(Backend_LIBS
+    ${Backend_LIBS}
+    kqueue
+    )
+
+INCLUDE_DIRECTORIES("${CMAKE_SOURCE_DIR}/common/kqueue/include")
+
+ADD_SUBDIRECTORY (${CMAKE_SOURCE_DIR}/common/crypto++)
+
+# must match library!
+add_definitions (-DCRYPTOPP_DISABLE_ASM)
+
+SET(Backend_LIBS
+    ${Backend_LIBS}
+    cryptopp
+    )
+
+INCLUDE_DIRECTORIES("${CMAKE_SOURCE_DIR}/common/crypto++/Headers")
+
+ADD_SUBDIRECTORY (${CMAKE_SOURCE_DIR}/common/netport)
+
+SET(Backend_LIBS
+    ${Backend_LIBS}
+    netport
+    )
+
+INCLUDE_DIRECTORIES("${CMAKE_SOURCE_DIR}/common/netport/include")
+
+SET(Trillek_Client_LIBS ${Backend_LIBS} ${Frontend_LIBS})
+SET(Trillek_Client_Network_Test_LIBS ${Trillek_Client_LIBS})
 
 FOREACH(MAIN_CPP ${TCC_MAIN_CPP})
     GET_FILENAME_COMPONENT(T_NAME ${MAIN_CPP} NAME_WE)
@@ -170,6 +193,11 @@ FOREACH(MAIN_CPP ${TCC_MAIN_CPP})
         SET(T_NAME "Trillek_Client")
 	SET(BUILDTARGET "BUILD_CLIENT")
     ENDIF(T_NAME STREQUAL "client-main")
+
+    IF(T_NAME STREQUAL "network-test-main")
+        SET(T_NAME "Trillek_Client_Network_Test")
+	SET(BUILDTARGET "BUILD_NET_TEST")
+    ENDIF(T_NAME STREQUAL "network-test-main")
 
     IF(BUILDTARGET)
         MESSAGE(STATUS "Processing: ${T_NAME}")
@@ -186,7 +214,7 @@ FOREACH(MAIN_CPP ${TCC_MAIN_CPP})
         # this other form is only supported in new versions of cmake
         #target_compile_definitions(${T_NAME} PRIVATE ${BUILDTARGET})
 
-	ADD_DEPENDENCIES(${T_NAME} VCOMPUTER)
+        ADD_DEPENDENCIES(${T_NAME} VCOMPUTER kqueue cryptopp)
 
         # Link the executable to all required libraries
         TARGET_LINK_LIBRARIES(${T_NAME} ${${T_NAME}_LIBS})
@@ -202,10 +230,6 @@ if(TCC_BUILD_TESTS)
     SET_PROPERTY(TARGET TCCTests PROPERTY COMPILE_DEFINITIONS _STANDALONE_ APPEND)
     #target_compile_definitions(TCCTests PRIVATE _STANDALONE_)
     ADD_DEPENDENCIES(TCCTests VCOMPUTER)
-    IF(TCC_TEST_NETWORK_DISABLE)
-        SET_PROPERTY(TARGET TCCTests PROPERTY COMPILE_DEFINITIONS NO_NETWORK APPEND)
-        #target_compile_definitions(TCCTests PRIVATE NO_NETWORK)
-    ENDIF(TCC_TEST_NETWORK_DISABLE)
 
-    TARGET_LINK_LIBRARIES(TCCTests ${GTEST_LIBRARIES} ${Trillek_Standalone_LIBS})
+    TARGET_LINK_LIBRARIES(TCCTests ${GTEST_LIBRARIES} ${Trillek_Client_LIBS})
 endif(TCC_BUILD_TESTS)

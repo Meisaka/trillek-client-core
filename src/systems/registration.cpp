@@ -32,18 +32,18 @@
 namespace trillek {
 /** \brief Type of component
  *
- * DYNAMIC: The component is passed to the system and then stored in the
+ * Dynamic: The component is passed to the system and then stored in the
  * ComponentFactory container
- * SYSTEM : The component is passed to SystemComponent and is stored there
- * SHARED : The component is passed to SharedComponent and is stored there
+ * System : The component is passed to SystemComponent and is stored there
+ * Shared : The component is passed to SharedComponent and is stored there
  *
- * system_value is like system, but for primitive values that don't need a pointer
- * to be passed as argument of a fonction (bool, uint32_t).
+ * SystemValue is like system, but for primitive values that don't need a pointer
+ * to be passed as argument of a function (bool, uint32_t).
  *
- * Only SHARED components can be shared between systems in different threads.
- * By default, DYNAMIC components are registered.
+ * Only Shared components can be shared between systems in different threads.
+ * By default, Dynamic components are registered.
  *
- * The preferred choice is SYSTEM.
+ * The preferred choice is System.
  */
 
 using component::Component;
