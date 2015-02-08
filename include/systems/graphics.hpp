@@ -11,11 +11,12 @@
 #include <memory>
 #include <vector>
 #include <future>
+#include <map>
 #include <iostream>
+
 #include "trillek.hpp"
 #include "type-id.hpp"
 #include "trillek-scheduler.hpp"
-#include "components/component.hpp"
 #include "systems/system-base.hpp"
 #include "util/json-parser.hpp"
 #include "graphics/graphics-base.hpp"
@@ -23,10 +24,10 @@
 #include "graphics/render-layer.hpp"
 #include "graphics/texture.hpp"
 #include "graphics/vertex-list.hpp"
-#include <map>
+#include "graphics/graphics-container.hpp"
 #include "systems/dispatcher.hpp"
 #include "os.hpp"
-#include "graphics/graphics-container.hpp"
+#include "logging.hpp"
 
 namespace trillek {
 

@@ -12,7 +12,8 @@
 #include "user-command-queue.hpp"
 #include "systems/system-base.hpp"
 
-namespace trillek { namespace physics {
+namespace trillek {
+namespace physics {
 
 struct VelocityStruct {
     VelocityStruct() : linear(0,0,0,0), angular(0,0,0,0) {};

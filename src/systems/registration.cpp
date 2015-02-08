@@ -60,27 +60,23 @@ void graphics::RenderSystem::RegisterTypes() {
 }
 
 void ComponentFactory::RegisterTypes() {
-    auto& shared = game.GetSharedComponent();
-    auto& system = game.GetSystemComponent();
-    auto& system_value = game.GetSystemValueComponent();
-    RegisterComponentType(ComponentAdder<SYSTEM,Component::Collidable>(system));
-    RegisterComponentType(ComponentAdder<SHARED,Component::Velocity, bool>(shared));
-    RegisterComponentType(ComponentAdder<SHARED,Component::VelocityMax, bool>(shared));
-    RegisterComponentType(ComponentAdder<SYSTEM,Component::ReferenceFrame,id_t>(system_value));
-    RegisterComponentType(ComponentAdder<SYSTEM,Component::IsReferenceFrame,bool>(system_value));
-    RegisterComponentType(ComponentAdder<SYSTEM,Component::CombinedVelocity>(system));
-    RegisterComponentType(ComponentAdder<SYSTEM,Component::OxygenRate,float>(system_value));
-    RegisterComponentType(ComponentAdder<SYSTEM,Component::Health,uint32_t>(system_value));
-    RegisterComponentType(ComponentAdder<SYSTEM,Component::Movable,bool>(system_value));
-    RegisterComponentType(ComponentAdder<SHARED,Component::GraphicTransform,bool>(shared));
-    RegisterComponentType(ComponentAdder<SHARED,Component::GameTransform,bool>(shared));
-    RegisterComponentType(ComponentAdder<SYSTEM,Component::VComputer>(system));
-    RegisterComponentType(ComponentAdder<SYSTEM,Component::VDisplay>(system));
-    RegisterComponentType(ComponentAdder<SYSTEM,Component::VKeyboard>(system));
-    RegisterComponentType(ComponentAdder<SYSTEM,Component::Renderable>(system));
-    RegisterComponentType(ComponentAdder<SYSTEM,Component::Light>(system));
-    RegisterComponentType(ComponentAdder<SYSTEM,Component::Camera>(system));
-    RegisterSystem<graphics::CameraBase>(&game.GetGraphicSystem());
+    RegisterComponentType(ComponentAdder<System,Component::Collidable>());
+    RegisterComponentType(ComponentAdder<Shared,Component::Velocity>());
+    RegisterComponentType(ComponentAdder<Shared,Component::VelocityMax>());
+    RegisterComponentType(ComponentAdder<SystemValue,Component::ReferenceFrame>());
+    RegisterComponentType(ComponentAdder<SystemValue,Component::IsReferenceFrame>());
+    RegisterComponentType(ComponentAdder<System,Component::CombinedVelocity>());
+    RegisterComponentType(ComponentAdder<SystemValue, Component::OxygenRate>());
+    RegisterComponentType(ComponentAdder<SystemValue, Component::Health>());
+    RegisterComponentType(ComponentAdder<SystemValue,Component::Movable>());
+    RegisterComponentType(ComponentAdder<Shared,Component::GraphicTransform>());
+    RegisterComponentType(ComponentAdder<Shared,Component::GameTransform>());
+    RegisterComponentType(ComponentAdder<System,Component::VComputer>());
+    RegisterComponentType(ComponentAdder<System,Component::VDisplay>());
+    RegisterComponentType(ComponentAdder<System,Component::VKeyboard>());
+    RegisterComponentType(ComponentAdder<System,Component::Renderable>());
+    RegisterComponentType(ComponentAdder<System,Component::Light>());
+    RegisterComponentType(ComponentAdder<System,Component::Camera>());
 }
 
 void gui::GuiSystem::RegisterTypes() {

@@ -1,15 +1,15 @@
 #include "trillek-game.hpp"
-#include "components/shared-component.hpp"
-#include "components/system-component.hpp"
-#include "components/system-component-value.hpp"
+#include "components/component.hpp"
 #include "physics/collidable.hpp"
 #include "systems/transform-system.hpp"
+#include "systems/physics.hpp"
 #include <bullet/BulletCollision/Gimpact/btGImpactShape.h>
 #include <bullet/BulletCollision/Gimpact/btGImpactCollisionAlgorithm.h>
 #include "logging.hpp"
 #include "user-command.hpp"
 
-namespace trillek { namespace physics {
+namespace trillek {
+namespace physics {
 
 using namespace component;
 
@@ -139,7 +139,7 @@ void PhysicsSystem::HandleEvents(frame_tp timepoint) {
 
     dynamicsWorld->stepSimulation(delta * 1.0E-9, 10);
     // Set out transform updates.
-    auto& bodymap = game.GetSystemComponent().Map<Component::Collidable>();
+    auto& bodymap = GetRawContainer<Component::Collidable>().Map();
     for (auto& shape : bodymap) {
         btTransform transform =
             Get<Component::Collidable>(shape.second)->GetRigidBody()->getWorldTransform();
@@ -278,16 +278,14 @@ void PhysicsSystem::Terminate() {
 }
 
 void PhysicsSystem::SetGravity(const unsigned int entity_id, const btVector3& f) {
-    auto& system = game.GetSystemComponent();
-    if (system.Has<Component::Collidable>(entity_id)) {
-        system.Get<Component::Collidable>(entity_id).GetRigidBody()->setGravity(f);
+    if (Has<Component::Collidable>(entity_id)) {
+        Get<Component::Collidable>(entity_id).GetRigidBody()->setGravity(f);
     }
 }
 
 void PhysicsSystem::SetNormalGravity(const unsigned int entity_id) {
-    auto& system = game.GetSystemComponent();
-    if (system.Has<Component::Collidable>(entity_id)) {
-        system.Get<Component::Collidable>(entity_id).GetRigidBody()->setGravity(this->dynamicsWorld->getGravity());
+    if (Has<Component::Collidable>(entity_id)) {
+        Get<Component::Collidable>(entity_id).GetRigidBody()->setGravity(this->dynamicsWorld->getGravity());
     }
 }
 

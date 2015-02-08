@@ -1,7 +1,7 @@
 #include "transform.hpp"
 #include "type-id.hpp"
 #include "trillek-game.hpp"
-#include "components/system-component.hpp"
+#include "components/component.hpp"
 #include "systems/graphics.hpp"
 #include "systems/resource-system.hpp"
 #include "systems/gui.hpp"
@@ -82,12 +82,11 @@ const int* RenderSystem::Start(const unsigned int width, const unsigned int heig
     );
 
     // Activate the lowest ID or first camera and get the initial view matrix.
-    auto &sysc = game.GetSystemComponent();
-    auto &bits = sysc.Bitmap<Component::Camera>();
+    auto &bits = component::GetRawContainer<Component::Camera>().Bitmap();
     size_t endc = bits.size();
     for (auto cam = bits.enumerator(endc); *cam < endc; ++cam) {
         this->camera_id = *cam;
-        this->camera = sysc.GetSharedPtr<Component::Camera>(*cam);
+        this->camera = component::Get<Component::Camera>(component::GetContainer<Component::Camera>(*cam));
         break;
     }
 
@@ -670,14 +669,13 @@ void RenderSystem::RenderDepthOnlyPass(const float *view_matrix, const float *pr
     CheckGLError();
     depthpassshader->Use();
     CheckGLError();
-    auto &sysc = game.GetSystemComponent();
-    auto &bits = sysc.Bitmap<Component::Light>();
+    auto &bits = component::GetRawContainer<Component::Light>().Bitmap();
     size_t endc = bits.size();
     std::shared_ptr<LightBase> light;
     id_t lightid;
     for (auto clight = bits.enumerator(endc); *clight < endc; ++clight) {
         lightid = *clight;
-        auto light = sysc.GetSharedPtr<Component::Light>(lightid);
+        auto light = component::GetSharedPtr<Component::Light>(lightid);
         if(light->shadows) {
             break;
         }
@@ -739,12 +737,11 @@ void RenderSystem::RenderLightingPass(const glm::mat4x4 &view_matrix, const floa
     }
     glEnable(GL_BLEND);
     glBlendFunc(GL_ONE, GL_ONE);
-    auto &sysc = game.GetSystemComponent();
-    auto &bits = sysc.Bitmap<Component::Light>();
+    auto &bits = component::GetRawContainer<Component::Light>().Bitmap();
     size_t endc = bits.size();
     for (auto clight = bits.enumerator(endc); *clight < endc; ++clight) {
         auto ltiter = this->model_matrices.find(*clight);
-        LightBase &activelight = sysc.Get<Component::Light>(*clight);
+        const LightBase &activelight = component::Get<Component::Light>(*clight);
         if(activelight.enabled && ltiter != this->model_matrices.end()) {
             std::shared_ptr<Texture> shadowbuf;
             GLint useshadow = 0;
@@ -799,7 +796,7 @@ void RenderSystem::RenderLightingPass(const glm::mat4x4 &view_matrix, const floa
 
 inline void RenderSystem::UpdateModelMatrices(const frame_tp& timepoint) {
     auto& transform_container =
-        game.GetSharedComponent().Map<Component::GraphicTransform>();
+        GetRawContainer<Component::GraphicTransform>().Map();
     static frame_tp ltp;
     std::unique_lock<std::mutex> tslock(game.transforms_lock, std::defer_lock);
     if( !tslock.try_lock() ) {
@@ -829,7 +826,6 @@ inline void RenderSystem::UpdateModelMatrices(const frame_tp& timepoint) {
             }
         }
     }
-
 }
 
 void RenderSystem::RenderPostPass(std::shared_ptr<Shader> postshader) const {
@@ -972,8 +968,7 @@ void RenderSystem::ActivateMesh(std::shared_ptr<resource::Mesh> mesh, SceneEntry
 }
 
 void RenderSystem::RenderablesUpdate(double fdelta) {
-    auto &sysc = game.GetSystemComponent();
-    auto &bits = sysc.Bitmap<Component::Renderable>();
+    auto &bits = component::GetRawContainer<Component::Renderable>().Bitmap();
     size_t endc = bits.size();
     for(auto wren_itr = loaded_renderables.begin(); wren_itr != loaded_renderables.end(); wren_itr++) {
         if(wren_itr->status.expired()) {
@@ -984,22 +979,26 @@ void RenderSystem::RenderablesUpdate(double fdelta) {
         }
     }
     for(auto ci = bits.enumerator(endc); *ci < endc; ++ci) {
-        Renderable &render = sysc.Get<Component::Renderable>(*ci);
-        if(!render.loadstatus) {
+        auto rcon = component::GetContainer<Component::Renderable>(*ci);
+        auto rptr = component::Get<Component::Renderable>(rcon);
+        if(!rptr) {
+            continue;
+        }
+        if(!rptr->loadstatus) {
             LOGMSGC(DEBUG) << "Loading Renderable: " << *ci;
             auto loader = std::make_shared<LoadStatus>();
-            render.loadstatus = loader;
+            rptr->loadstatus = loader;
             loaded_renderables.push_back(SceneEntry(loader));
             loaded_renderables.back().entity = *ci;
-            loaded_renderables.back().anim = render.GetAnimation();
+            loaded_renderables.back().anim = rptr->GetAnimation();
             scene_rebuild = true;
         }
         else {
-            if( (render.loadstatus->flags) == 0 ) {
+            if( (rptr->loadstatus->flags) == 0 ) {
                 scene_rebuild = true;
             }
         }
-        auto const &anim = render.GetAnimation();
+        auto const &anim = rptr->GetAnimation();
         if(anim) {
             anim->UpdateAnimation(fdelta);
         }
@@ -1009,7 +1008,6 @@ void RenderSystem::RenderablesUpdate(double fdelta) {
 void RenderSystem::RebuildScene() {
     LOGMSGC(DEBUG) << "Rebuilding scene";
     scene_rebuild = false;
-    auto &sysc = game.GetSystemComponent();
     for(auto ri = mesh_refs.begin(); ri != mesh_refs.end(); ri++) {
         if((*ri).second->mesh.expired()) {
             ri = mesh_refs.erase(ri);
@@ -1024,7 +1022,7 @@ void RenderSystem::RebuildScene() {
             continue;
         }
         auto lren = wren_itr->status.lock();
-        auto &ren = sysc.Get<Component::Renderable>(wren_itr->entity);
+        auto& ren = component::Get<Component::Renderable>(wren_itr->entity);
         auto shade = Get<Shader>(ren.shader_name);
         if((lren->flags & 1) == 0) {
             ActivateMesh(ren.mesh, *wren_itr, shade);

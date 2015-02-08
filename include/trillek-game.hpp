@@ -29,11 +29,6 @@ class System;
 namespace script {
 class LuaSystem;
 }
-namespace component {
-class Shared;
-class System;
-class SystemValue;
-}
 
 class TrillekGame final {
 public:
@@ -71,27 +66,6 @@ public:
      * \return FakeSystem& the fake system
      */
     FakeSystem& GetFakeSystem() { return *fake_system.get(); }
-
-    /** \brief Get the storage of shared components
-     *
-     * \return component::Shared& the storage
-     *
-     */
-    component::Shared& GetSharedComponent() { return *shared_component.get(); };
-
-    /** \brief Get the storage of system components stored by pointers
-     *
-     * \return component::System& the storage
-     *
-     */
-    component::System& GetSystemComponent() { return *system_component.get(); };
-
-    /** \brief Get the storage of system components stored by values
-     *
-     * \return component::SystemValue& the storage
-     *
-     */
-    component::SystemValue& GetSystemValueComponent() { return *system_value_component.get(); };
 
     /** \brief Get the terminate flag
      *
@@ -154,9 +128,6 @@ private:
     std::unique_ptr<physics::PhysicsSystem> phys_sys;
     std::unique_ptr<OS> glfw_os;
     std::unique_ptr<VComputerSystem> vcomputer_system;
-    std::unique_ptr<component::Shared> shared_component;
-    std::unique_ptr<component::System> system_component;
-    std::unique_ptr<component::SystemValue> system_value_component;
     bool close_window;
 
     std::once_flag once_graphics;
