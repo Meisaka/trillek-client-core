@@ -10,7 +10,8 @@
 #include "logging.hpp"
 #include <thread>
 
-namespace trillek { namespace network {
+namespace trillek {
+namespace network {
 
 std::unique_ptr<TCPConnection> NetworkController::TCP_server_socket;
 socket_t NetworkController::TCP_server_handle;
@@ -28,13 +29,13 @@ void NetworkController::Initialize(const std::string& host, uint16_t port) {
     }
     // Open UDP socket
     auto cnx_udp = make_unique<UDPSocket>();
-    if (! cnx_udp->init(NETA_IPv4)) {
+    if (! cnx_udp->init(net::NETA_IPv4)) {
         LOGMSG(ERROR) << "FATAL : Could not initialize socket.";
         return;
     }
     auto fd = cnx_udp->get_handle();
-    set_nonblocking(fd, true);
-    NetworkAddress listen_address(host, port);
+    cnx_udp->set_nonblocking(true);
+    net::address listen_address(host, port);
     if (! cnx_udp->bind(listen_address)) {
         LOGMSG(ERROR) << "FATAL : Invalid address/port";
         return;
@@ -45,8 +46,8 @@ void NetworkController::Initialize(const std::string& host, uint16_t port) {
 }
 
 bool NetworkController::Connect(const std::string& host, uint16_t port,
-                        const std::string& login, const std::string& password) const {
-    NetworkAddress myaddress(host, port);
+        const std::string& login, const std::string& password) const {
+    net::address myaddress(host, port);
     {
         std::unique_lock<std::mutex> locker(m_connection_data_tcp);
         if (TCP_server_socket) {
@@ -72,9 +73,8 @@ bool NetworkController::Connect(const std::string& host, uint16_t port,
         poller.Create(fd);
         auto timestamp = TrillekGame::Now().time_since_epoch().count();
         auto node_data = std::allocate_shared<NetworkNodeData>
-                            (TrillekAllocator<NetworkNodeData>(),
-                            cnx->remote(),
-                            timestamp);
+            (TrillekAllocator<NetworkNodeData>(),
+            cnx->remote(), timestamp);
         auto cd = make_unique<ConnectionData>(AUTH_INIT,std::move(node_data));
         this->session_state = std::move(cd);
         this->TCP_server_socket = std::move(cnx);
@@ -115,7 +115,7 @@ int NetworkController::HandleEvents() const {
     }
 
     for (auto i=0; i<nev; i++) {
-//        LOGMSG(DEBUG) << "(" << std::this_thread::get_id() << ") loop on " << nev << " events.";
+//      LOGMSG(DEBUG) << "(" << std::this_thread::get_id() << ") loop on " << nev << " events.";
         auto fd = evList[i].ident;
         if (evList[i].flags & EV_EOF) {
             // connection closed
@@ -150,9 +150,10 @@ int NetworkController::HandleEvents() const {
                     // Data received from authenticated client
                     auto max_size = std::min(evList[i].data, static_cast<intptr_t>(MAX_AUTHENTICATED_FRAME_SIZE));
                     auto msg = Message::New<TCPMessage>
-                                            (MAX_MESSAGE_SIZE, this->session_state.get());
+                        (MAX_MESSAGE_SIZE, this->session_state.get());
                     auto f = std::allocate_shared<Frame_req,TrillekAllocator<Frame_req>>
-                                            (TrillekAllocator<Frame_req>(),fd, max_size, this->session_state.get(), std::move(msg));
+                        (TrillekAllocator<Frame_req>(), fd,
+                        max_size, this->session_state.get(), std::move(msg));
                     temp_auth.push_back(std::move(f));
                     b = true;
                 }
@@ -187,7 +188,7 @@ int NetworkController::UDPFrameProcessing(const AtomicQueue<std::shared_ptr<Mess
     char* buffer = reinterpret_cast<char*>(frame->FrameHeader());
     int len;
     while ((len = recv(fd, buffer, static_cast<intptr_t>(MAX_UDP_DATAGRAM_SIZE))) > 0) {
-//        LOGMSG(DEBUG) << "(" << std::this_thread::get_id() << ") Read " << len << " bytes from network";
+//      LOGMSG(DEBUG) << "(" << std::this_thread::get_id() << ") Read " << len << " bytes from network";
         // request completed
         frame->SetIndexPosition(len);
         reassembled_frames_list.push_back(std::move(frame));
@@ -195,7 +196,7 @@ int NetworkController::UDPFrameProcessing(const AtomicQueue<std::shared_ptr<Mess
         buffer = reinterpret_cast<char*>(frame->FrameHeader());
     }
     // check integrity
-//    LOGMSG(DEBUG) << "(" << std::this_thread::get_id() << ") Checking integrity for " << reassembled_frames_list.size() << " messages.";
+//  LOGMSG(DEBUG) << "(" << std::this_thread::get_id() << ") Checking integrity for " << reassembled_frames_list.size() << " messages.";
     reassembled_frames_list.remove_if(
         [](const std::shared_ptr<Message>& message) {
             auto size_to_check = message->PacketSize() - VMAC_SIZE;
@@ -208,7 +209,7 @@ int NetworkController::UDPFrameProcessing(const AtomicQueue<std::shared_ptr<Mess
     // We unlock the socket
     poller.Watch(fd);
 
-//    LOGMSG(DEBUG) << "(" << std::this_thread::get_id() << ") Moving " << reassembled_frames_list.size() << " messages.";
+//  LOGMSG(DEBUG) << "(" << std::this_thread::get_id() << ") Moving " << reassembled_frames_list.size() << " messages.";
     // we push the result of the current job
     output->PushList(std::move(reassembled_frames_list));
     return CONTINUE;
@@ -217,7 +218,7 @@ int NetworkController::UDPFrameProcessing(const AtomicQueue<std::shared_ptr<Mess
 void NetworkController::CloseConnection() const {
     auto fd = GetTCPHandle();
     poller.Delete(fd);
-    close(fd);
+    net::close(fd);
     SetAuthState(AUTH_NONE);
     is_connected.notify_all();
 }
@@ -229,43 +230,45 @@ int NetworkController::UnauthenticatedDispatch() const {
     }
     trillek_list<std::shared_ptr<Message>> temp_send_salt;
     trillek_list<std::shared_ptr<Message>> temp_key_reply;
-//					LOG_DEBUG << "(" << sched_getcpu() << ") got " << req_list->size() << " PublicDispatchReq events";
+//	LOG_DEBUG << "(" << sched_getcpu() << ") got " << req_list->size() << " PublicDispatchReq events";
     for (auto& req : req_list) {
         msg_hdr* header = req->Header();
         auto major = header->type_major;
         if (IS_RESTRICTED(major)) {
-//                LOG_DEBUG << "restricted";
+//          LOG_DEBUG << "restricted";
             CloseConnection();
             break;
         }
         switch(major) {
         case NET_MSG:
-            {
-                auto minor = header->type_minor;
-                switch(minor) {
-                    case AUTH_SEND_SALT:
-                        {
-                            temp_send_salt.push_back(std::move(req));
-                            break;
-                        }
-                    case AUTH_KEY_REPLY:
-                        {
-                            temp_key_reply.push_back(std::move(req));
-                            break;
-                        }
-                    default:
-                        {
-//                                LOG_DEBUG << "(" << sched_getcpu() << ") invalid minor code, closing";
-                            CloseConnection();
-                        }
+        {
+            auto minor = header->type_minor;
+            switch(minor) {
+            case AUTH_SEND_SALT:
+                {
+                    temp_send_salt.push_back(std::move(req));
+                }
+                break;
+            case AUTH_KEY_REPLY:
+                {
+                    temp_key_reply.push_back(std::move(req));
+                }
+                break;
+            default:
+                {
+//                  LOG_DEBUG << "(" << sched_getcpu() << ") invalid minor code, closing";
+                    CloseConnection();
                 }
                 break;
             }
+            break;
+        }
         default:
             {
-//                    LOG_DEBUG << "(" << sched_getcpu() << ") invalid major code in unauthenticated chain, packet of " << req->PacketSize() << " bytes, closing";
+//              LOG_DEBUG << "(" << sched_getcpu() << ") invalid major code in unauthenticated chain, packet of " << req->PacketSize() << " bytes, closing";
                 CloseConnection();
             }
+            break;
         }
     }
     if(! temp_send_salt.empty()) {
@@ -277,7 +280,6 @@ int NetworkController::UnauthenticatedDispatch() const {
         packet_handler.Process<NET_MSG,AUTH_KEY_REPLY>();
     }
     return STOP;
-
 }
 
 int NetworkController::AuthenticatedDispatch() const {
@@ -287,7 +289,7 @@ int NetworkController::AuthenticatedDispatch() const {
     }
     trillek_list<std::shared_ptr<Message>> test_msg_tcp_list;
     trillek_list<std::shared_ptr<Message>> test_msg_udp_list;
-//					LOG_DEBUG << "(" << sched_getcpu() << ") got " << req_list->size() << " AuthenticatedCheckedDispatchReq events";
+//  LOG_DEBUG << "(" << sched_getcpu() << ") got " << req_list->size() << " AuthenticatedCheckedDispatchReq events";
     for (auto& req : req_list) {
         msg_hdr* header = req->Header();
         auto major = header->type_major;
@@ -297,30 +299,32 @@ int NetworkController::AuthenticatedDispatch() const {
             {
                 auto minor = header->type_minor;
                 switch(minor) {
-                    case TEST_MSG_TCP:
-                        {
-                            test_msg_tcp_list.push_back(std::move(req));
-                            break;
-                        }
-                    case TEST_MSG_UDP:
-                        {
-                            test_msg_udp_list.push_back(std::move(req));
-                            break;
-                        }
-                    default:
-                        {
-//                                LOG_ERROR << "(" << sched_getcpu() << ") TEST: closing";
-                            CloseConnection();
-                        }
+                case TEST_MSG_TCP:
+                    {
+                        test_msg_tcp_list.push_back(std::move(req));
+                    }
+                    break;
+                case TEST_MSG_UDP:
+                    {
+                        test_msg_udp_list.push_back(std::move(req));
+                    }
+                    break;
+                default:
+                    {
+//                      LOG_ERROR << "(" << sched_getcpu() << ") TEST: closing";
+                        CloseConnection();
+                    }
+                    break;
                 }
                 break;
             }
-
+            break;
         default:
             {
-//                    LOG_ERROR << "(" << sched_getcpu() << ") Authenticated switch: closing";
+//              LOG_ERROR << "(" << sched_getcpu() << ") Authenticated switch: closing";
                 CloseConnection();
             }
+            break;
         }
     }
     if (! test_msg_tcp_list.empty()) {

@@ -163,12 +163,24 @@ INCLUDE_DIRECTORIES("${CMAKE_SOURCE_DIR}/common/kqueue/include")
 
 ADD_SUBDIRECTORY (${CMAKE_SOURCE_DIR}/common/crypto++)
 
+# must match library!
+add_definitions (-DCRYPTOPP_DISABLE_ASM)
+
 SET(Backend_LIBS
     ${Backend_LIBS}
     cryptopp
     )
 
 INCLUDE_DIRECTORIES("${CMAKE_SOURCE_DIR}/common/crypto++/Headers")
+
+ADD_SUBDIRECTORY (${CMAKE_SOURCE_DIR}/common/netport)
+
+SET(Backend_LIBS
+    ${Backend_LIBS}
+    netport
+    )
+
+INCLUDE_DIRECTORIES("${CMAKE_SOURCE_DIR}/common/netport/include")
 
 SET(Trillek_Client_LIBS ${Backend_LIBS} ${Frontend_LIBS})
 SET(Trillek_Client_Network_Test_LIBS ${Trillek_Client_LIBS})

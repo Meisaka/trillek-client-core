@@ -12,24 +12,26 @@
 #include "controllers/network/packet-handler.hpp"
 //#include <utmpx.h>
 
-#define LOGIN_FIELD_SIZE	16
-#define SALT_SIZE			8
-#define ALEA_SIZE			16
-#define NONCE2_SIZE			16
-#define	NONCE_SIZE			8
-#define PUBLIC_KEY_SIZE     32
+#define LOGIN_FIELD_SIZE   16
+#define SALT_SIZE           8
+#define ALEA_SIZE          16
+#define NONCE2_SIZE        16
+#define NONCE_SIZE          8
+#define PUBLIC_KEY_SIZE    32
 
-#define AUTH_NONE			0
-#define AUTH_INIT			1
-#define AUTH_KEY_EXCHANGE	2
-#define AUTH_SHARE_KEY		3
-#define AUTHENTICATED		4
-#define AUTH_SEND_SALT		5
-#define AUTH_KEY_REPLY		6
+#define AUTH_NONE           0
+#define AUTH_INIT           1
+#define AUTH_KEY_EXCHANGE   2
+#define AUTH_SHARE_KEY      3
+#define AUTHENTICATED       4
+#define AUTH_SEND_SALT      5
+#define AUTH_KEY_REPLY      6
 
-// The server stores salt and SHA-256(salt,SHA-256(login|":"|password)), salt being chosen randomly
+// The server stores salt and SHA-256(salt,SHA-256(login|":"|password)),
+// salt being chosen randomly
 
-namespace trillek { namespace network {
+namespace trillek {
+namespace network {
 
 struct GetSaltTaskRequest;
 struct KeyExchangePacket;
@@ -40,7 +42,7 @@ class VMAC_StreamHasher;
 }
 
 struct SendSaltPacket {
-    byte salt[SALT_SIZE];								// the stored number used as salt for password
+    byte salt[SALT_SIZE]; // the stored number used as salt for password
     std::shared_ptr<Message> GetKeyExchangePacket();
 };
 
@@ -54,12 +56,12 @@ struct KeyReplyPacket {
 
 struct KeyExchangePacket {
     byte salt[SALT_SIZE];
-    byte alea1[ALEA_SIZE];                              // Random number used to derive the shared secret for TCP, client to server
-    byte alea2[ALEA_SIZE];                              // Random number used to derive the shared secret for UDP, client to server
-    byte alea3[ALEA_SIZE];                              // Random number used to derive the shared secret for TCP, server to client
-    byte alea4[ALEA_SIZE];                              // Random number used to derive the shared secret for UDP, server to client
-    byte nonce2[NONCE2_SIZE];                           // A random number used as nonce for all VMAC (key derivation and TCP channels)
-    byte nonce[NONCE_SIZE];                             // a random number used as nonce for the VMAC of this packet
+    byte alea1[ALEA_SIZE]; /// Random number used to derive the shared secret for TCP, client to server
+    byte alea2[ALEA_SIZE]; /// Random number used to derive the shared secret for UDP, client to server
+    byte alea3[ALEA_SIZE]; /// Random number used to derive the shared secret for TCP, server to client
+    byte alea4[ALEA_SIZE]; /// Random number used to derive the shared secret for UDP, server to client
+    byte nonce2[NONCE2_SIZE]; /// A random number used as nonce for all VMAC (key derivation and TCP channels)
+    byte nonce[NONCE_SIZE]; /// a random number used as nonce for the VMAC of this packet
 
     std::unique_ptr<CryptoPP::FixedSizeAlignedSecBlock<byte,16>> DeriveKey(const byte*, const byte*) const;
 };
@@ -75,11 +77,15 @@ public:
 
     static void CheckKeyExchange(const trillek_list<std::shared_ptr<Message>>& req_list);
     static void CreateSecureKey(const trillek_list<std::shared_ptr<Message>>& req_list);
-    static std::shared_ptr<chain_t> GetAuthInitHandler() { return auth_init_handler; };
+    static std::shared_ptr<chain_t> GetAuthInitHandler() {
+        return auth_init_handler;
+    }
 
     static const std::string& Password() { return password; };
 
-    static std::shared_ptr<CryptoPP::FixedSizeAlignedSecBlock<byte,16>> GetSecretKey() { return secret_key; };
+    static std::shared_ptr<CryptoPP::FixedSizeAlignedSecBlock<byte,16>> GetSecretKey() {
+        return secret_key;
+    }
 
     static std::shared_ptr<chain_t> auth_init_handler;
     static std::string password;
@@ -92,10 +98,10 @@ struct AuthInitPacket {
 };
 
 struct GetSaltTaskRequest {
-    GetSaltTaskRequest(int fd, char login[LOGIN_FIELD_SIZE]) : fd(fd), login(login) {};
+    GetSaltTaskRequest(socket_t fd, char login[LOGIN_FIELD_SIZE]) : fd(fd), login(login) {};
     SendSaltPacket packet;
     char* login;
-    int fd;
+    socket_t fd;
 };
 
 namespace packet_handler {
@@ -105,6 +111,7 @@ namespace packet_handler {
     template<>
     void PacketHandler::Process<NET_MSG,AUTH_KEY_REPLY>() const;
 } // packet_handler
+
 } // network
 } // trillek
 

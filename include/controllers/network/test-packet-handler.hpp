@@ -1,7 +1,8 @@
 #ifndef TESTPACKETHANDLER_H_INCLUDED
 #define TESTPACKETHANDLER_H_INCLUDED
 
-namespace trillek { namespace network {
+namespace trillek {
+namespace network {
 struct TestPacket {
     char message[8];
 };
