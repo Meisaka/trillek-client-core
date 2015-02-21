@@ -648,7 +648,11 @@ void RenderSystem::RenderColorPass(const float *view_matrix, const float *proj_m
                 int h = 0;
                 for(auto &entr : rel.vertlists) {
                     h++;
-                    if(entr.textureref) {
+                    if(entr.textureref && vlist.texturedata.size() != 0) {
+                        auto tex = vlist.texturedata.at(entr.textureref - 1);
+                        glUniform1i(u_istex_loc, 1);
+                        glActiveTexture(GL_TEXTURE0);
+                        glBindTexture(GL_TEXTURE_2D, tex->GetID());
                     }
                     else {
                         glUniform1i(u_istex_loc, 0);
@@ -909,6 +913,31 @@ RenderSystem::MeshRefData::~MeshRefData() {
     LOGMSG(DEBUG) << "~MeshRefData()";
 }
 
+std::shared_ptr<Texture> RenderSystem::LoadTexture(std::string& name) {
+    using namespace resource;
+    std::shared_ptr<Texture> tex_ptr = Get<Texture>(name);
+    if (tex_ptr) {
+        return tex_ptr;
+    }
+    LOGMSGC(DEBUG) << "LoadTexture: " << name;
+    if (ResourceMap::Get<PixelBuffer>(name)) {
+        tex_ptr.reset(new Texture(ResourceMap::Get<PixelBuffer>(name)));
+        Add<Texture>(name, tex_ptr);
+    }
+    else {
+        std::vector<Property> props;
+        props.push_back(Property("filename", name));
+        if (ResourceMap::Create<PixelBuffer>(name, props)) {
+            tex_ptr.reset(new Texture(ResourceMap::Get<PixelBuffer>(name)));
+            Add<Texture>(name, tex_ptr);
+        }
+        else {
+            LOGMSGC(WARNING) << "LoadTexture: Create call failed.";
+        }
+    }
+    return tex_ptr;
+}
+
 void RenderSystem::ActivateMesh(std::shared_ptr<resource::Mesh> mesh, SceneEntry& ent, std::shared_ptr<Shader> shade) {
     auto mref = mesh_refs.find(mesh.get());
     if(mref == mesh_refs.end()) {
@@ -947,7 +976,7 @@ void RenderSystem::ActivateMesh(std::shared_ptr<resource::Mesh> mesh, SceneEntry
         rlist.vertexoffset = vofs;
         rlist.indexoffset = iofs;
         rlist.meshptr = mesh;
-        for(size_t i = 0; i < sz; i++) {
+        for (size_t i = 0; i < sz; i++) {
             std::shared_ptr<resource::MeshGroup> mg = mesh->GetMeshGroup(i).lock();
             size_t x = rlist.vertlists.size();
             rlist.vertlists.push_back(VertexListEntry());
@@ -955,6 +984,22 @@ void RenderSystem::ActivateMesh(std::shared_ptr<resource::Mesh> mesh, SceneEntry
             cvle.vertexcount = mg->verts.size();
             cvle.indexcount = mg->indicies.size();
             cvle.textureref = 0;
+            for (auto& texname : mg->textures) {
+                if (texname.length() > 0) {
+                    auto tex_itr = vlist.texture_ids.find(texname);
+                    if (tex_itr == vlist.texture_ids.end()) {
+                        auto texture = LoadTexture(texname);
+                        vlist.texturedata.push_back(std::move(texture));
+                        size_t tex_id = vlist.texturedata.size();
+                        vlist.texture_ids[texname] = tex_id;
+                        cvle.textureref = (uint32_t) tex_id;
+                    }
+                    else {
+                        LOGMSGC(DEBUG) << "ActivateMesh: get texture " << texname;
+                        cvle.textureref = (uint32_t) tex_itr->second;
+                    }
+                }
+            }
             cvle.offset = iofs;
             LOGMSGC(DEBUG) << "RL #" << rlist.vertlists.size() << " at " << vofs+vcount << ", " << iofs
                 << " counts V:" << cvle.vertexcount << " I:" << cvle.indexcount;

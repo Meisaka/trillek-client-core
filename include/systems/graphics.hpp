@@ -357,6 +357,8 @@ private:
     void ActivateMesh(std::shared_ptr<resource::Mesh>, SceneEntry&, std::shared_ptr<Shader>);
     void RebuildScene();
 
+    std::shared_ptr<Texture> LoadTexture(std::string& name);
+
     int gl_version[3];
     int debugmode;
     int debugid;

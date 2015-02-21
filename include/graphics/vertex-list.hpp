@@ -6,6 +6,7 @@
 #include "graphics/graphics-base.hpp"
 #include <memory>
 #include <vector>
+#include <map>
 
 namespace trillek {
 
@@ -80,6 +81,8 @@ private:
     uint32_t vertexsize;
     std::shared_ptr<Shader> shader;
     std::vector<RenderEntryList> meshinfo;
+    std::vector<std::shared_ptr<Texture>> texturedata;
+    std::map<std::string, size_t> texture_ids;
     uint32_t indexcount;
     uint32_t vertexcount;
     bool update;
