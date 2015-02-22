@@ -29,12 +29,15 @@ VertexList::VertexList(VertexList&& that) {
     dynamic = that.dynamic;
     shader = std::move(that.shader);
     meshinfo = std::move(that.meshinfo);
+    texture_ids = std::move(that.texture_ids);
+    texturedata = std::move(that.texturedata);
     that.vao = 0;
     that.buf[0] = 0;
     that.buf[1] = 0;
     that.vertexsize = 0;
     that.vertexcount = 0;
     that.indexcount = 0;
+    LOGMSGC(DEBUG) << "move";
 }
 VertexList& VertexList::operator=(VertexList&& that) {
     vao = that.vao;

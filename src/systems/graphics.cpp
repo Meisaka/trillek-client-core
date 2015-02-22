@@ -633,6 +633,7 @@ void RenderSystem::RenderColorPass(const float *view_matrix, const float *proj_m
                     u_istex_loc = shader.Uniform("textured");
                     u_animatrix_loc = shader.Uniform("animation_matrix");
                     u_animate_loc = shader.Uniform("animated");
+                    glUniform1i(shader.Uniform("texUnit"), 0);
                 }
                 glUniformMatrix4fv(u_model_loc, 1, GL_FALSE, &this->model_matrices.at(wren_itr->entity)[0][0]);
                 if(wren_itr->anim) {
@@ -648,7 +649,7 @@ void RenderSystem::RenderColorPass(const float *view_matrix, const float *proj_m
                 int h = 0;
                 for(auto &entr : rel.vertlists) {
                     h++;
-                    if(entr.textureref && vlist.texturedata.size() != 0) {
+                    if(entr.textureref && entr.textureref <= vlist.texturedata.size()) {
                         auto tex = vlist.texturedata.at(entr.textureref - 1);
                         glUniform1i(u_istex_loc, 1);
                         glActiveTexture(GL_TEXTURE0);
@@ -919,7 +920,6 @@ std::shared_ptr<Texture> RenderSystem::LoadTexture(std::string& name) {
     if (tex_ptr) {
         return tex_ptr;
     }
-    LOGMSGC(DEBUG) << "LoadTexture: " << name;
     if (ResourceMap::Get<PixelBuffer>(name)) {
         tex_ptr.reset(new Texture(ResourceMap::Get<PixelBuffer>(name)));
         Add<Texture>(name, tex_ptr);
@@ -992,6 +992,7 @@ void RenderSystem::ActivateMesh(std::shared_ptr<resource::Mesh> mesh, SceneEntry
                         vlist.texturedata.push_back(std::move(texture));
                         size_t tex_id = vlist.texturedata.size();
                         vlist.texture_ids[texname] = tex_id;
+                        LOGMSGC(DEBUG) << "ActivateMesh: load texture " << texname << " : " << tex_id;
                         cvle.textureref = (uint32_t) tex_id;
                     }
                     else {
