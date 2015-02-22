@@ -56,6 +56,13 @@ bool Renderable::Initialize(const id_t entity_id, const std::vector<Property> &p
         }
     }
 
+    for(auto is_inst : this->set_inst_textures) {
+        if(is_inst) {
+            this->inst_textures.push_back(
+                std::shared_ptr<resource::PixelBuffer>(new resource::PixelBuffer())
+                );
+        }
+    }
     this->mesh = resource::ResourceMap::Get<resource::Mesh>(mesh_name);
     if (!this->mesh) {
         return false;

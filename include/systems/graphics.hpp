@@ -50,8 +50,13 @@ class LightBase;
 class RenderList;
 
 struct LoadStatus {
+    enum LOAD_STATUS_FLAGS : uint32_t {
+        LOAD_STATUS_NONE = 0,
+        LOAD_MESH = 1,
+        LOAD_DYN_TEXTURE = 2,
+    };
     LoadStatus() :
-        flags(0) {}
+        flags(LOAD_STATUS_NONE) {}
     uint32_t flags;
 };
 
@@ -426,7 +431,7 @@ private:
         mesh_id_t meshid;
         id_t entity;
         std::shared_ptr<Animation> anim;
-        std::vector<std::weak_ptr<Texture>> textures;
+        std::vector<std::pair<uint32_t, std::shared_ptr<Texture>>> textures;
     };
 
     std::list<SceneEntry> loaded_renderables;

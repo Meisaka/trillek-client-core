@@ -616,6 +616,7 @@ void RenderSystem::RenderColorPass(const float *view_matrix, const float *proj_m
     GLint u_animate_loc = -1;
     for(auto wren_itr = loaded_renderables.begin(); wren_itr != loaded_renderables.end(); wren_itr++) {
         auto ref = mesh_refs.find(wren_itr->meshid);
+        auto &inst_textures = wren_itr->textures;
         if(ref != mesh_refs.end()) {
             const VertexList &vlist = scenebuffers.at(ref->second->listid);
             if(vlist.shader) {
@@ -646,14 +647,22 @@ void RenderSystem::RenderColorPass(const float *view_matrix, const float *proj_m
                 }
 
                 const RenderEntryList &rel = vlist.meshinfo.at(ref->second->entry_index);
-                int h = 0;
+                int h = 0, t = 0;
                 for(auto &entr : rel.vertlists) {
                     h++;
                     if(entr.textureref && entr.textureref <= vlist.texturedata.size()) {
-                        auto tex = vlist.texturedata.at(entr.textureref - 1);
-                        glUniform1i(u_istex_loc, 1);
-                        glActiveTexture(GL_TEXTURE0);
-                        glBindTexture(GL_TEXTURE_2D, tex->GetID());
+                        if(t < inst_textures.size() && inst_textures.at(t).first != 0) {
+                            glUniform1i(u_istex_loc, 1);
+                            glActiveTexture(GL_TEXTURE0);
+                            glBindTexture(GL_TEXTURE_2D, inst_textures.at(t).second->GetID());
+                        }
+                        else {
+                            auto tex = vlist.texturedata.at(entr.textureref - 1);
+                            glUniform1i(u_istex_loc, 1);
+                            glActiveTexture(GL_TEXTURE0);
+                            glBindTexture(GL_TEXTURE_2D, tex->GetID());
+                        }
+                        t++;
                     }
                     else {
                         glUniform1i(u_istex_loc, 0);
@@ -1069,12 +1078,29 @@ void RenderSystem::RebuildScene() {
             wren_itr = loaded_renderables.erase(wren_itr);
             continue;
         }
-        auto lren = wren_itr->status.lock();
+        auto lren_status = wren_itr->status.lock();
+        auto &lren = *wren_itr;
         auto &ren = sysc.Get<Component::Renderable>(wren_itr->entity);
         auto shade = Get<Shader>(ren.shader_name);
-        if((lren->flags & 1) == 0) {
-            ActivateMesh(ren.mesh, *wren_itr, shade);
-            lren->flags |= 1;
+        if((lren_status->flags & LoadStatus::LOAD_MESH) == 0) {
+            ActivateMesh(ren.mesh, lren, shade);
+            lren_status->flags |= LoadStatus::LOAD_MESH;
+        }
+        if((lren_status->flags & LoadStatus::LOAD_DYN_TEXTURE) == 0) {
+            uint32_t tex_num = 0;
+            uint32_t tex_id;
+            for(auto is_dynamic : ren.set_inst_textures) {
+                if(is_dynamic) {
+                    std::shared_ptr<Texture> tex_ptr(new Texture(ren.inst_textures.at(tex_num), true));
+                    tex_num++;
+                    tex_id = Add(tex_ptr);
+                    lren.textures.push_back({tex_id, tex_ptr});
+                }
+                else {
+                    lren.textures.push_back({0, nullptr});
+                }
+            }
+            lren_status->flags |= LoadStatus::LOAD_DYN_TEXTURE;
         }
     }
     for(auto &vl : this->scenebuffers) {
